@@ -19,7 +19,7 @@ button.go{background:#2a7bd4;color:#fff;border:0;padding:8px 14px;border-radius:
 table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}
 .ok{color:#2c9b45;font-weight:700}.bad{color:#c0392b;font-weight:700}.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin:6px 0}
 #state{font-size:12px}
-</style></head><body>
+.cp{background:#0a7;color:#fff;border-radius:8px;padding:0 6px;font-size:11px;margin-left:4px}</style></head><body>
 <header><h1>Ticket-JSON-API – Schulungs-Webshop</h1>
 <p>Jeder Schritt zeigt: <b>wann</b> der Call gebraucht wird, den <b>exakten Request</b>, die <b>Response</b> und <b>was in den nächsten Schritt fließt</b>. Läuft komplett im Browser (die API muss CORS senden: <code>Access-Control-Allow-Origin: *</code>).</p></header>
 <div class="cfg">
@@ -169,16 +169,16 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 
 
 <div class="tab" id="t-gv">
-<div class="when"><b>Gutschein mit frei wählbarem Betrag:</b> Kein eigener Gutschein-Call nötig – es ist ein normaler <code>ArticleSale</code>, bei dem das Feld <b><code>CustomPrice</code></b> (Stückpreis) den Artikelpreis überschreibt. Das funktioniert nur, wenn der Artikel im Kassen-/Ticketsystem dafür freigegeben ist (Artikel-Einstellung „kundenbezogener/abweichender Preis erlaubt“, API-Feld <code>AllowCustomPrice</code>). <code>GiftCertificateCalculate/Reserve/Release</code> und <code>FindGiftCertificates</code> sind dagegen fürs <b>Einlösen</b> eines vorhandenen Gutscheins als Zahlung gedacht.</div>
-<div class="warn"><b>Wichtig:</b> ReCalculateBasket übernimmt <code>CustomPrice</code> bei <b>jedem</b> Artikel – erst <b>ValidateBasket</b> prüft die Freigabe (Regel <code>ArticleCustomPrice</code>: „…unterstützt keinen kundenbezogenen Preis“). Darum vor der Zahlung unbedingt validieren.<br/>
-<b>Real getestet (16.10.2026, 35 €):</b> ✔ „Gutschein (Druck)“ (Listenpreis 5 €) → 35 € gültig (auch 0,50 € und 1000 € – keine Min/Max-Grenze); ✔ „Geldwertkarte Variabel“ (Digital-Wallet-Artikel, Listenpreis 100 €) → 35 € gültig; ✘ „Gutschein 50€“ und „Wertgutschein neu“ → ArticleCustomPrice. Achtung Geldwertkarte: <code>DigitalWalletCharge</code> zusätzlich setzen addiert (100 + 35 = 135) – für variablen Betrag nur <code>CustomPrice</code> verwenden.</div>
+<div class="when"><b>Gutschein mit frei wählbarem Betrag:</b> Kein eigener Gutschein-Call nötig – es ist ein normaler <code>ArticleSale</code>, bei dem das Feld <b><code>CustomPrice</code></b> (Stückpreis) den Artikelpreis überschreibt. Ob das erlaubt ist, steht <b>direkt am Artikel</b>: <code>FindArticles</code> liefert pro Artikel <code>allowPriceChangeWebshop</code> (Webshop) und <code>allowPriceChangeWeb</code> (API allgemein). Nur Artikel mit <code>allowPriceChangeWebshop = true</code> bekommen hier das Badge „freier Betrag“ und ein Betragsfeld. Min-/Max-Beträge gibt es in der API nicht. <code>GiftCertificateCalculate/Reserve/Release</code> und <code>FindGiftCertificates</code> sind dagegen fürs <b>Einlösen</b> eines vorhandenen Gutscheins als Zahlung gedacht.</div>
+<div class="warn"><b>Sicherheitsnetz:</b> ReCalculateBasket übernimmt <code>CustomPrice</code> technisch bei jedem Artikel. <b>ValidateBasket</b> lehnt einen nicht freigegebenen freien Betrag als letzte Prüfung vor der Zahlung ab (Regel <code>ArticleCustomPrice</code>). Die Anzeige im Shop richtet sich aber nach dem Artikel-Feld.<br/>
+<b>Real getestet (16.10.2026, 35 €):</b> ✔ „Gutschein (Druck)“ (Listenpreis 5 €) → 35 € gültig (auch 0,50 € und 1000 € – keine Min/Max-Grenze); Auffällig: „Geldwertkarte Variabel“ (Digital-Wallet-Artikel) hat <code>allowPriceChangeWebshop = false</code>, wurde von ValidateBasket mit 35 € aber akzeptiert – im Shop daher nicht als freier Betrag angeboten; ✘ „Gutschein 50€“ und „Wertgutschein neu“ → ArticleCustomPrice. Achtung Geldwertkarte: <code>DigitalWalletCharge</code> zusätzlich setzen addiert (100 + 35 = 135) – für variablen Betrag nur <code>CustomPrice</code> verwenden.</div>
 <div class="step"><h3><span>1</span>Gutschein-Artikel wählen (<code>Articles/FindArticles</code>)</h3>
 <div class="when"><b>Wann:</b> Gutscheinseite aufbauen. FindArticles liefert <b>kein</b> Kennzeichen „variabel“ – welche Artikel freigegeben sind, muss der Shop kennen (Konfiguration) oder per Validate ausprobieren.</div>
 <button class="go" onclick="gvLoad()">Artikel laden</button> <select id="gvArt"></select>
 <div id="out-gv0"></div></div>
 <div class="step"><h3><span>2</span>Betrag eingeben → <code>General/ReCalculateBasket</code></h3>
 <div class="when"><b>Wann:</b> Kunde hat Betrag gewählt. Position: <code>{$type: ArticleSale, Article:{Id}, Quantity:1, CustomPrice: Betrag}</code>. Response: <code>unitPrice</code> = <code>customPrice</code> = Betrag.</div>
-<div class="row">Betrag (€) <input id="gvAmt" inputmode="decimal" style="width:90px" type="text" value="35"/></div>
+<div id="gvInfo" class="when"></div><div class="row" id="gvAmtRow" style="display:none">Betrag (€) <input id="gvAmt" inputmode="decimal" style="width:90px" type="text" value="35"/></div>
 <button class="go" onclick="gvRecalc()">ReCalculateBasket</button>
 <div class="flow"><b>Weiter:</b> basket → ValidateBasket (hier oder im Tab Artikelkauf) → Zahlarten → Checkout.</div>
 <div id="out-gv1"></div></div>
@@ -351,9 +351,11 @@ async function call(mod,meth,body,out){
     pre.textContent=`// HTTP ${r.status} – ${Math.round(performance.now()-t0)} ms\n`+JSON.stringify(j,null,2);return j;
   }catch(e){pre.textContent='Fehler: '+e+'\n(CORS/Netzwerk? Siehe README)';return null}}
 // ---------- Artikel ----------
+const cpOk=a=>!!(a&&(a.allowPriceChangeWebshop??a.AllowPriceChangeWebshop));
+const cpBadge=a=>cpOk(a)?' <span class="cp" title="allowPriceChangeWebshop = true">freier Betrag</span>':'';
 async function findArticles(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true}}},'#out-fa');if(!r)return;
-  S.articles=r.articles||[];$('#arts').innerHTML='<table><tr><th>Artikel</th><th>Listenpreis</th><th>id</th><th></th></tr>'+S.articles.map((a,i)=>`<tr><td>${esc(a.name||'')}</td><td>${a.price??''}</td><td><small>${a.id}</small></td><td><button class="go" onclick="addArt(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
-function addArt(i){const a=S.articles[i];const ex=S.items.find(x=>x.Article&&x.Article.Id==a.id);if(ex)ex.Quantity++;else S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});S._names=S._names||{};S._names[a.id]=a.name;renderCart()}
+  S.articles=r.articles||[];$('#arts').innerHTML='<table><tr><th>Artikel</th><th>Listenpreis</th><th>Betrag</th><th>id</th><th></th></tr>'+S.articles.map((a,i)=>`<tr><td>${esc(a.name||'')}${cpBadge(a)}</td><td>${a.price??''}</td><td>${cpOk(a)?`<input id="amt${i}" inputmode="decimal" style="width:70px" placeholder="${a.price??''}" title="leer = Listenpreis"/> €`:''}</td><td><small>${a.id}</small></td><td><button class="go" onclick="addArt(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
+function addArt(i){const a=S.articles[i];const ai=document.getElementById('amt'+i);let cp=null;if(cpOk(a)&&ai&&ai.value.trim()!==''){cp=Number(ai.value.replace(',','.'));if(!(cp>0)||Math.abs(Math.round(cp*100)-cp*100)>1e-6)return alert('Betrag > 0 mit max. 2 Nachkommastellen eingeben (oder leer = Listenpreis)');S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust(),CustomPrice:cp});S._names=S._names||{};S._names[a.id]=a.name;return renderCart()}const ex=S.items.find(x=>x.Article&&x.Article.Id==a.id);if(ex)ex.Quantity++;else S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});S._names=S._names||{};S._names[a.id]=a.name;renderCart()}
 function itemLabel(x){const t=(x.$type||x['$type']||'').split(',')[0].split('.').pop();const a=x.Article||x.article;const q=x.Quantity??x.quantity;
   if(a)return `${q}× ${esc((S._names||{})[a.Id||a.id]||a.name||a.Id||a.id)}${(x.CustomPrice||x.customPrice)?' ('+(x.CustomPrice||x.customPrice)+' €)':''}`;
   const en=x.entries||x.Entries;if(en)return `${t} (${en.map(e=>(e.participantCount??e.ParticipantCount)+' Pers.').join(' + ')})`;return t}
@@ -445,9 +447,10 @@ async function findAbos(){const r=await call('Subscriptions','FindSubscriptionAr
   S.abos=(r&&r.subscriptionArticles)||[];$('#abos').innerHTML='<table><tr><th>Abo/Karte</th><th>Preis</th><th>Eintritte</th><th></th></tr>'+S.abos.map((a,i)=>`<tr><td>${esc(a.name)}</td><td>${a.price}</td><td>${a.numberOfTurns??''}</td><td><button class="go" onclick="addAbo(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
 function addAbo(i){const a=S.abos[i];S._names=S._names||{};S._names[a.id]=a.name;S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});renderCart();alert('Im Warenkorb – weiter im Tab Artikelkauf, Schritt 2 (ReCalculateBasket)')}
 async function gvLoad(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true},Paging:{PageIndex:0,PageSize:100}}},'#out-gv0');
-  const l=((r&&r.articles)||[]).filter(a=>/gutschein|geldwert|gwk|voucher/i.test(a.name));
-  const ok=['34ac8db6-eb6d-f011-b125-a63f2ac99bc4','bb47a697-66cf-f011-b128-ba6c4355f9e2'];
-  $('#gvArt').innerHTML=l.map(a=>`<option value="${a.id}">${esc(a.name)} (Liste ${a.price} €)${ok.includes(a.id)?' ✔ variabel getestet':''}</option>`).join('');if(l.some(a=>a.id==ok[0]))$('#gvArt').value=ok[0]}
+  const all=(r&&r.articles)||[];const l=all.filter(cpOk);
+  $('#gvArt').innerHTML=l.map(a=>`<option value="${a.id}">${esc(a.name)} (Liste ${a.price} €) – freier Betrag</option>`).join('');
+  $('#gvAmtRow').style.display=l.length?'':'none';$('#gvInfo').textContent=l.length?`${l.length} von ${all.length} Artikeln mit allowPriceChangeWebshop = true. Keine Min-/Max-Felder in der API.`:'Kein Artikel mit allowPriceChangeWebshop = true.';
+  const g=l.find(a=>/gutschein/i.test(a.name));if(g)$('#gvArt').value=g.id}
 async function gvRecalc(){const aid=$('#gvArt').value;if(!aid)return alert('Erst Artikel laden');
   const amt=Number(String($('#gvAmt').value).replace(',','.'));if(!(amt>0)||Math.abs(Math.round(amt*100)-amt*100)>1e-6)return alert('Bitte einen Betrag > 0 mit max. 2 Nachkommastellen eingeben (CustomPrice 0 oder negativ ignoriert die API und nimmt den Listenpreis).');
   const it={$type:T('ArticleSale'),Id:guid(),Article:{Id:aid},Quantity:1,CustomerID:cust(),CustomPrice:amt};S._names=S._names||{};S._names[aid]=$('#gvArt').selectedOptions[0].text;
