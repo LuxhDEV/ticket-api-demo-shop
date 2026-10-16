@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+
+<html lang="de"><head><meta charset="utf-8"/><title>Ticket-JSON-API – Schulungs-Webshop</title>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<style>
+body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;background:#f4f6f8;color:#1d2733}
+header{background:#003b5c;color:#fff;padding:14px 20px}header h1{margin:0;font-size:20px}header p{margin:4px 0 0;font-size:13px;opacity:.85}
+.cfg{display:flex;flex-wrap:wrap;gap:10px;padding:12px 20px;background:#fff;border-bottom:1px solid #ddd;align-items:end}
+.cfg label{font-size:12px;display:flex;flex-direction:column;gap:3px}input,select{padding:6px;border:1px solid #bbb;border-radius:4px;font:inherit;font-size:13px}
+.cfg input{width:300px}.cfg input.s{width:70px}
+nav{display:flex;flex-wrap:wrap;gap:4px;padding:10px 20px 0}nav .grp{font-size:11px;color:#555;align-self:center;margin:0 4px 0 10px;text-transform:uppercase}nav button{border:0;padding:9px 14px;background:#dde3e8;border-radius:6px 6px 0 0;cursor:pointer;font-weight:600}nav button.on{background:#fff}
+main{padding:0 20px 40px}.tab{display:none;background:#fff;padding:16px;border-radius:0 6px 6px 6px}.tab.on{display:block}
+.step{border:1px solid #d5dbe0;border-radius:6px;margin:14px 0;padding:12px 14px}.step h3{margin:0 0 6px;font-size:16px}.step h3 span{background:#003b5c;color:#fff;border-radius:50%;display:inline-block;width:24px;height:24px;text-align:center;line-height:24px;margin-right:6px;font-size:13px}
+.when{background:#eef6ff;border-left:4px solid #2a7bd4;padding:6px 10px;font-size:13px;margin:6px 0}.flow{background:#f0fbf2;border-left:4px solid #2c9b45;padding:6px 10px;font-size:13px;margin:6px 0}.warn{background:#fff4e5;border-left:4px solid #e08a00;padding:6px 10px;font-size:13px;margin:6px 0}
+button.go{background:#2a7bd4;color:#fff;border:0;padding:8px 14px;border-radius:5px;cursor:pointer;font-weight:600;margin:6px 6px 6px 0}button.go:hover{background:#1d5fa8}button.danger{background:#c0392b}
+.io{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:900px){.io{grid-template-columns:1fr}}
+.io h4{margin:6px 0 3px;font-size:12px;text-transform:uppercase;color:#555}pre{background:#1e2530;color:#d8e2ec;padding:10px;border-radius:5px;max-height:380px;overflow:auto;font-size:12px;margin:0;white-space:pre-wrap;word-break:break-all}
+.url{font-family:monospace;font-size:12px;background:#eef;padding:3px 6px;border-radius:3px}
+table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}
+.ok{color:#2c9b45;font-weight:700}.bad{color:#c0392b;font-weight:700}.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin:6px 0}
+#state{font-size:12px}
+</style></head><body>
+<header><h1>Ticket-JSON-API – Schulungs-Webshop</h1>
+<p>Jeder Schritt zeigt: <b>wann</b> der Call gebraucht wird, den <b>exakten Request</b>, die <b>Response</b> und <b>was in den nächsten Schritt fließt</b>. Läuft komplett im Browser (die API muss CORS senden: <code>Access-Control-Allow-Origin: *</code>).</p></header>
+<div class="cfg">
+<label>API-Basis-URL<input id="base" value="" placeholder="https://api.example.com/json"/></label>
+<label>ShopId<input id="shopId" value="" placeholder="ShopId eingeben"/></label><label>Contract-Namespace<input id="ns" value="" placeholder="z. B. Vendor.WebShop.WebServices.Contracts"/></label>
+<label>Password<input id="pw" type="password" value="" placeholder="API-Passwort eingeben"/></label>
+<label>Sprache<select id="lang"><option>de</option><option>en</option><option>nl</option><option>fr</option></select></label>
+<label>Origin<input class="s" id="origin" title="ServiceOrigin: 0=Default, 1=Internet, 2=VendingMachine, 3=Desktop" value="0"/></label>
+<label>SessionId (GUID pro Warenkorb)<input id="sid"/></label>
+<button class="go" onclick="newSid()">Neue SessionId</button>
+<button class="go" onclick="call('General','GetCurrentWsdlVersion',{},'#out-ver')">Verbindung testen</button>
+</div>
+<div class="cfg" id="loginBar" style="background:#f7faf7">
+<b class="bad" id="loginStatus">⚪ anonym – CustomerId = Empty-GUID</b>
+<label>Username<input id="lUser" style="width:200px" value="" placeholder="Benutzername"/></label>
+<label>Passwort<input id="lPw" style="width:150px" type="password" value="" placeholder="Passwort"/></label>
+<button class="go" onclick="login()">Login (AuthenticateUser)</button>
+<button class="go" onclick="logout()" style="background:#888">Logout</button>
+<small>Nach Login wird die personId automatisch als CustomerId in ReCalculate/Validate/Lock/Checkout verwendet.</small>
+</div><div id="out-login" style="padding:0 20px"></div>
+<nav><span class="grp">Start</span><button data-t="t-flow">0. Kaufablauf</button><span class="grp">Verkauf</span><button class="on" data-t="t-art">1. Artikelkauf</button><button data-t="t-pro">2. Warenkorb-Profi</button><button data-t="t-gv">3. Variabler Gutschein</button><button data-t="t-abo">4. Abos/Mehrfachkarten</button><button data-t="t-expo">5. Ausstellungen / Zeitfenster</button><button data-t="t-storno">6. Storno</button><span class="grp">Kunde</span><button data-t="t-cust">7. Kunden</button><button data-t="t-reg">8. Registrierung</button><button data-t="t-fam">9. Familie</button><button data-t="t-price">10. Kundenpreise</button><button data-t="t-acc">11. Bestellhistorie &amp; E-Tickets</button><span class="grp">Stammdaten</span><button data-t="t-master">12. Produktfilter</button><button data-t="t-res">13. Reservierung (Stammdaten)</button><span class="grp">Technik</span><button data-t="t-err">14. Fehler &amp; Recovery</button><button data-t="t-lang">15. Sprache</button><button data-t="t-raw">16. Spielwiese</button><button data-t="t-state">State</button></nav>
+<main>
+<div id="out-ver" style="margin:8px 0"></div>
+<!-- ================= ARTIKEL ================= -->
+<div class="tab on" id="t-art">
+<div class="when"><b>Standard-Kauffluss:</b> FindArticles → (Kunde) → ReCalculateBasket → ValidateBasket → ListPaymentMethods → (PSP-Zahlung) → CheckoutBasket → E-Ticket. Der Server hält <b>keinen</b> Warenkorb – das <code>basket</code>-Objekt lebt im Client und wird von Schritt zu Schritt weitergereicht.</div>
+<div class="step"><h3><span>1</span>Artikel laden – <code>Articles/FindArticles</code></h3>
+<div class="when"><b>Wann:</b> Beim Aufbau der Shop-/Produktseite, um verkaufbare Artikel inkl. Preis anzuzeigen. <code>Includes.Price: true</code> liefert den Listenpreis (nur zur Anzeige – rechnen tut später die API).</div>
+<button class="go" onclick="findArticles()">FindArticles ausführen</button>
+<div id="arts"></div>
+<div class="flow"><b>Weiter:</b> Gewählter Artikel wird als <code>ArticleSale</code>-Position (<code>$type</code>, <code>Article.Id</code>, eigene Positions-GUID <code>Id</code>, <code>Quantity</code>) in den Warenkorb gelegt.</div>
+<div id="out-fa"></div></div>
+<div class="step"><h3><span>2</span>Preise berechnen – <code>General/ReCalculateBasket</code></h3>
+<div class="when"><b>Wann:</b> Nach jedem Hinzufügen/Ändern einer Position und nach Kunden-Login (Preis kann kundenabhängig sein). Preis im Request darf 0 sein – die API setzt <code>unitPrice</code>/<code>price</code>. <b>Nie Preise im Frontend selbst rechnen.</b></div>
+<div class="row">Kunde (CustomerId): <input id="custId" readonly="" style="width:300px" value="00000000-0000-0000-0000-000000000000"/> <small>wird automatisch aus dem Login (oben) gesetzt; Empty-GUID = anonym. Im Demo-Shop verlangt ValidateBasket einen echten Kunden.</small></div>
+<div class="row">Warenkorb: <span id="cartView">leer</span> <button class="go" onclick="S.items=[];renderCart()" style="background:#888">leeren</button></div>
+<button class="go" onclick="recalc('#out-rc')">ReCalculateBasket ausführen</button>
+<div class="flow"><b>Weiter:</b> Das <b>komplette</b> <code>basket</code>-Objekt aus der Response wird gespeichert und in Validate/Checkout unverändert weiterverwendet.</div>
+<div id="out-rc"></div></div>
+<div class="step"><h3><span>3</span>Zahlarten laden – <code>General/ListPaymentMethods</code></h3>
+<div class="when"><b>Wann:</b> Vor der Zahlungsauswahl. Nur Context nötig. Die <code>id</code> der gewählten Zahlart kommt als <code>PaymentMethodId</code> in <code>payments[]</code>.</div>
+<button class="go" onclick="listPM()">ListPaymentMethods ausführen</button>
+<div class="row"><small>Vorauswahl: Rechnungs-Zahlart (invoicePaymentMethod) – schließt ohne externen PSP ab.</small> Gewählt: <select id="pmSel" onchange="S.paymentMethodId=this.value"></select></div>
+<div id="out-pm"></div></div>
+<div class="step"><h3><span>4</span>Warenkorb prüfen – <code>General/ValidateBasket</code></h3>
+<div class="when"><b>Wann:</b> Beim Hinzufügen zum Warenkorb und <b>unbedingt direkt vor dem Zahlungsstart</b> (PSP). Body: <code>basket</code> aus Schritt 2 + <code>payments[{Amount, Currency, PaymentMethodId}]</code> (Summe = <code>basket.price</code>). Erfolg: <code>result.isValid == true</code>, sonst <code>message</code>/<code>brokenRuleName</code> (pro Position max. 1 Regel).</div>
+<button class="go" onclick="validate()">ValidateBasket ausführen</button>
+<div class="flow"><b>Weiter:</b> Nur wenn gültig → Zahlung beim PSP durchführen → danach Checkout mit demselben basket.</div>
+<div id="out-val"></div></div>
+<div class="step"><h3><span>5</span>Kauf buchen – <code>General/CheckoutBasket</code></h3>
+<div class="when"><b>Wann:</b> Nachdem der Kunde (beim PSP) erfolgreich bezahlt hat. Validiert intern nochmals und bucht den Verkauf. Optional <code>orderId</code>/<code>payId</code>/<code>trxId</code> aus dem eigenen System/PSP. Erfolg: <code>result.resultState == 1</code>, liefert <code>salesItems[]</code>, <code>salesOrderNumber</code>, <code>invoiceId</code>.</div>
+<div class="warn">⚠ <b>Achtung: Dieser Call löst einen ECHTEN Verkauf im Kassen-/Ticketsystem aus!</b> Es erscheint vorher eine Bestätigungsabfrage.</div>
+<div class="row">orderId (optional) <input id="orderId" placeholder="z.B. DEMO-123"/></div>
+<button class="go danger" onclick="checkout()">CheckoutBasket ausführen (echter Kauf)</button>
+<div class="flow"><b>Weiter:</b> Eine beliebige <code>salesItems[].id</code> genügt für die E-Ticket-URL.</div>
+<div id="out-co"></div></div>
+<div class="step"><h3><span>6</span>E-Ticket (PDF) anzeigen</h3>
+<div class="when"><b>Wann:</b> Nach erfolgreichem Checkout (Bestätigungsseite / E-Mail). Kein JSON-Call, sondern ein REST-GET auf den Dokumentendienst: <code>https://{webserviceurl}/WebShopDocumentService.svc/ETickets/{ShopId}/{Sprache}/{SalesItemId}</code>. Für Aktivitäten stattdessen <code>…/ActivitySubscriptions/{ShopId}/{Sprache}/{entryId}</code>.</div>
+<div class="row">webserviceurl <input id="docBase" style="width:260px" value="" placeholder="https://api.example.com"/> SalesItemId <input id="salesItemId" placeholder="aus Checkout-Response" style="width:300px"/></div>
+<button class="go" onclick="eticket()">E-Ticket-URL bauen</button>
+<div id="out-et"></div></div>
+</div>
+<!-- ================= KUNDEN ================= -->
+<div class="tab" id="t-cust">
+<div class="step"><h3><span>A</span>Kunde anlegen – <code>General/SavePerson</code></h3>
+<div class="when"><b>Wann:</b> Registrierung im Shop. <code>Person.Id</code> = Empty-GUID → neu anlegen; mit vorhandener Id → Update (gleicher Call). <code>Options</code> steuern Duplikat-/Alters-/Login-Prüfung.</div>
+<div class="row">Vorname <input id="pFirst" value="API"/> Nachname <input id="pLast" value="Demo"/> E-Mail <input id="pMail"/> </div>
+<div class="row">Username <input id="pUser"/> Passwort <input id="pPw" value="Demo1234!"/> Geburtsdatum <input id="pBirth" type="date" value="1990-01-01"/></div>
+<button class="go" onclick="savePerson()">SavePerson ausführen</button>
+<div class="flow"><b>Weiter:</b> <code>result.person.id</code> wird als CustomerId in den Warenkorb übernommen.</div>
+<div id="out-sp"></div></div>
+<div class="step"><h3><span>B</span>Login – <code>General/AuthenticateUser</code></h3>
+<div class="when"><b>Wann:</b> Kunde meldet sich im Shop an. Erfolg: <code>result.hasSucceeded == true</code>, <code>error == 0</code>; <code>personId</code> = Kunde. Danach ReCalculateBasket erneut ausführen (kundenspezifische Preise).</div>
+<div class="row">Username <input id="aUser"/> Passwort <input id="aPw" value="Demo1234!"/></div>
+<button class="go" onclick="authUser()">AuthenticateUser ausführen</button>
+<div id="out-au"></div></div>
+<div class="step"><h3><span>C</span>Kunde suchen – <code>General/FindPerson</code></h3>
+<div class="when"><b>Wann:</b> Prüfen, ob ein Kunde schon existiert (z.B. vor Registrierung per E-Mail) oder Kundendaten nachladen.</div>
+<div class="row">E-Mail <input id="fMail"/></div>
+<button class="go" onclick="findPerson()">FindPerson ausführen</button>
+<div id="out-fp"></div></div>
+</div>
+<!-- ================= EXPOSITIONS ================= -->
+<div class="tab" id="t-expo">
+<div class="when"><b>Zeitfenster-Tickets:</b> FindExpositions → FindExpositionPeriodDates → ListExpositionPeriods → FindExpositionPrices → <b>LockBasketItems</b> → dann wie Artikelkauf ab Schritt 2 (ReCalculate/Validate/…/Checkout). Datumswerte immer als <b>lokale Zeit ohne „Z“</b> senden, z.B. <code>2027-01-16T00:00:00</code>.</div>
+<div class="step"><h3><span>1</span><code>Expositions/FindExpositions</code></h3>
+<div class="when"><b>Wann:</b> Übersicht der buchbaren Ausstellungen/Eintritte. <code>Includes.Pricing</code> liefert Tickets inkl. Preis.</div>
+<button class="go" onclick="findExpo()">FindExpositions ausführen</button> <select id="expoSel"></select>
+<div id="out-fx"></div></div>
+<div class="step"><h3><span>2</span><code>Expositions/FindExpositionPeriodDates</code></h3>
+<div class="when"><b>Wann:</b> Kalender befüllen: pro Tag, ob noch ein Zeitfenster mit freier Kapazität existiert (<code>isAvailable</code>).</div>
+<div class="row">Von <input id="xFrom" type="date"/> Bis <input id="xUntil" type="date"/></div>
+<button class="go" onclick="findDates()">FindExpositionPeriodDates ausführen</button> <select id="dateSel"></select>
+<div id="out-fd"></div></div>
+<div class="step"><h3><span>3</span><code>Expositions/ListExpositionPeriods</code></h3>
+<div class="when"><b>Wann:</b> Nach Datumswahl: Zeitfenster des Tages mit Belegung (<code>occupancy.remaining</code>).</div>
+<button class="go" onclick="listPeriods()">ListExpositionPeriods ausführen</button> <select id="perSel"></select>
+<div id="out-lp"></div></div>
+<div class="step"><h3><span>4</span><code>Expositions/FindExpositionPrices</code></h3>
+<div class="when"><b>Wann:</b> Nach Datumswahl <b>immer</b>: am Tag gültige Preise/Tickettypen. <code>IncludeActivePeriods: true</code> ist wichtig – sonst kommen am Tag ungültige Preise mit.</div>
+<button class="go" onclick="findPrices()">FindExpositionPrices ausführen</button>
+<div id="prices"></div>
+<div class="warn">Hinweis (real beobachtet): Die Response enthält dieselbe Preisgruppe mehrfach – als Staffel nach <code>minimumQuantity</code> (z.B. Erwachsene 0,00 / ab 3: 7,33 / ab 4: 6,50). Die Tabelle zeigt je <code>group.id</code> nur einen Eintrag. <b>Jede group.id darf im Lock nur einmal vorkommen</b>, sonst Fehler „Ein Element mit dem gleichen Schlüssel wurde bereits hinzugefügt“. Mehrere Tickettypen (Erwachsene + Kinder) = mehrere Entries in <b>einer</b> ExpositionPeriodReservation.</div><div class="flow"><b>Weiter:</b> Für LockBasketItems wird <code>PriceGroupId = expositionPrice.group.id</code> verwendet (nicht <code>.id</code>!).</div>
+<div id="out-pr"></div></div>
+<div class="step"><h3><span>5</span>Reservieren – <code>General/LockBasketItems</code></h3>
+<div class="when"><b>Wann:</b> Beim „In den Warenkorb“: Kapazität wird temporär blockiert. Ein <code>ExpositionPeriodReservation</code> pro Zeitfenster, darin je Tickettyp ein <code>Entry</code>. Erfolg: <code>lockBasketResult.isLocked == true</code>.</div>
+<button class="go" onclick="lockItems()">LockBasketItems ausführen</button>
+<button class="go" onclick="unlockItems()" style="background:#888">UnlockBasketItems (Position entfernen)</button>
+<div class="flow"><b>Weiter:</b> Die <code>basketItems</code> <b>aus der Lock-Response</b> (inkl. <code>lockTicket</code>) ersetzen den Warenkorb → weiter im Tab „Artikelkauf“ ab Schritt 2 (ReCalculateBasket).</div>
+<div id="out-lk"></div></div>
+<div class="step"><h3><span>6</span>Umbuchen – <code>General/ReLockBasketItems</code></h3>
+<div class="when"><b>Wann:</b> Kunde will eine bereits gelockte Reservierung auf ein anderes Zeitfenster/Datum verschieben – <b>ohne</b> Mengen- oder Preisänderung (dafür: Unlock + neuer Lock). Body: die BasketItems aus dem Lock (inkl. <code>lockTicket</code>) mit geänderter <code>expositionPeriodId</code>. </div>
+<div class="row">Zieldatum <input id="rbDate" type="date"/> <button class="go" onclick="rbPeriods()">Zeitfenster am Zieltag laden</button> <select id="rbPer"></select></div>
+<button class="go" onclick="relock()">ReLockBasketItems ausführen</button>
+<button class="go" onclick="rebookViaUnlock()" style="background:#888">Alternative: Unlock + neuer Lock</button>
+<div class="warn"><b>Real beobachtet (16.10.2026):</b> ReLock liefert <code>isLocked:true</code>, die neue Periode und ein <b>neues</b> LockTicket mit <code>expirationTime 3000-12-31</code>. ReCalculateBasket mit diesem neuen Ticket schlägt aber fehl („Die Ausstellungsreservierung muss gesperrt sein“); mit dem <b>alten</b> LockTicket + neuer Periode klappt ReCalculate und ValidateBasket (isValid). Die Demo zeigt beide Tickets; Button unten testet beide Varianten.</div>
+<button class="go" onclick="rcAfterRelock('new')">ReCalculate mit NEUEM LockTicket</button><button class="go" onclick="rcAfterRelock('old')">ReCalculate mit ALTEM LockTicket</button>
+<div id="out-rl"></div></div>
+
+</div>
+<!-- ================= COUPONS ================= -->
+
+
+<div class="tab" id="t-price">
+<div class="when"><b>Kundenspezifische Preise:</b> Preise hängen an <b>Preisgruppen</b> (Rabattgruppen), die einem Kunden im Kassen-/Ticketsystem zugeordnet sind (<code>Person.PriceGroups</code>, je Modul: 0=Platzreservierung, 1=Ticketing, 2=Eintritt, 3=Verkauf (&amp; Ausstellungen), 4=Verleih, 5=Wellness). Die API rechnet sie automatisch ein, sobald die <b>CustomerId</b> gesetzt ist. Darum: <b>nach Login immer ReCalculateBasket</b>.</div>
+<div class="step"><h3><span>1</span>Alle Preisgruppen – <code>General/FindPriceGroups</code></h3>
+<div class="when"><b>Wann:</b> Stammdaten: welche Preis-/Rabattgruppen gibt es (z.B. „20% ULTRAPREMIUM“, „5% GWK“). Optional <code>Type</code> filtern.</div>
+<button class="go" onclick="call('General','FindPriceGroups',{SearchCriteria:{}},'#out-pg')">FindPriceGroups</button><div id="out-pg"></div></div>
+<div class="step"><h3><span>2</span>Preisgruppen des Kunden – <code>General/FindPerson</code> mit <code>Includes.PriceGroups</code></h3>
+<div class="when"><b>Wann:</b> Nach Login: in welcher Rabattgruppe ist der Kunde? Leere/fehlende <code>priceGroups</code> = keine Gruppe → Standardpreis. Zuordnen per <code>General/SavePersonPriceGroups</code> (Backoffice-Aufgabe, hier nicht ausgeführt).</div>
+<button class="go" onclick="personPG()">FindPerson (PriceGroups) für eingeloggten Kunden</button><div id="out-ppg"></div></div>
+<div class="step"><h3><span>3</span>Vergleich anonym vs. Kunde</h3>
+<div class="when"><b>So siehst du, ob der Kunde in einer Rabattgruppe ist:</b> gleichen Artikel einmal mit Empty-GUID und einmal mit der personId berechnen. Weichen die Preise ab, greift eine Preisgruppe. Zwei Wege: <code>Articles/GetArticlePriceInformation</code> (<code>SearchCriteria{ArticleId, CustomerId}</code> → totalPrice, priceGroup) und <code>General/ReCalculateBasket</code> (verbindlich, das zählt beim Kauf). Für Aktivitäten zusätzlich <code>Activities/GetPriceGroupActivityForPerson</code>.</div>
+<div class="row">Artikel <select id="cmpArt"></select> <button class="go" onclick="loadCmpArts()" style="background:#888">Artikel laden</button></div>
+<button class="go" onclick="compare()">Vergleich ausführen (4 Calls)</button>
+<div id="cmpRes"></div>
+<div class="warn"><b>Real (16.10.2026, Testkunde):</b> Die Preisgruppen stehen in <code>person.settings.priceGroups</code>. Bei der Anlage hatte der Kunde automatisch „Massage“ (Typ 2). Per <code>SavePersonPriceGroups</code> wurde „20% ULTRAPREMIUM“ für alle Typen 0–5 zugewiesen; FindPerson bestätigt das. <b>Trotzdem kein Preisunterschied</b>: Jahreskarte 250/250, Gutschein 50/50, Coca Cola 2,50/2,50, 10er Karte 27/27, Badelandschaft 2 Kinder 10/10 (alle 27 Artikel und Abos per ReCalculate geprüft, <code>priceGroup</code> in GetArticlePriceInformation = null). → Die Preisgruppe ist im Backoffice offenbar keinen Artikelpreisen bzw. Rabatten zugeordnet. Erst wenn das im Kassen-/Ticketsystem eingerichtet ist, zeigt dieser Vergleich die Differenz.</div>
+<div id="out-cmp"></div></div>
+</div>
+<div class="tab" id="t-abo">
+<div class="when"><b>Abos/Mehrfachkarten</b> (10er-Karte, Quartalskarte …): FindSubscriptionArticles → ArticleSale in den Warenkorb → ReCalculate → Validate → Zahlarten → Checkout (Tab Artikelkauf ab Schritt 2). Achtung: hier <code>Criteria</code> + <code>Includes.Prices</code> (bei FindArticles: <code>SearchCriteria</code> + <code>Price</code>).</div>
+<div class="step"><h3><span>1</span><code>Subscriptions/FindSubscriptionArticles</code></h3>
+<div class="when"><b>Wann:</b> Abo-/Kartenangebot anzeigen. Wichtige Felder: <code>numberOfTurns</code> (z.B. 10), <code>periodDuration</code>, <code>isEticket</code>, <code>familyItem</code>.</div>
+<button class="go" onclick="findAbos()">FindSubscriptionArticles</button><div id="abos"></div>
+<div class="flow"><b>Weiter:</b> Abo als <code>ArticleSale</code> mit <code>Article.Id = subscriptionArticle.id</code> → Tab Artikelkauf Schritt 2. Real: „10er Karte“ 27,00 € → ValidateBasket isValid ✔; „10er Eintritt“ → ungültig („Erforderliche Dauerkarte … nicht gefunden“).</div>
+<div id="out-abo"></div></div></div>
+
+
+<div class="tab" id="t-gv">
+<div class="when"><b>Gutschein mit frei wählbarem Betrag:</b> Kein eigener Gutschein-Call nötig – es ist ein normaler <code>ArticleSale</code>, bei dem das Feld <b><code>CustomPrice</code></b> (Stückpreis) den Artikelpreis überschreibt. Das funktioniert nur, wenn der Artikel im Kassen-/Ticketsystem dafür freigegeben ist (Artikel-Einstellung „kundenbezogener/abweichender Preis erlaubt“, API-Feld <code>AllowCustomPrice</code>). <code>GiftCertificateCalculate/Reserve/Release</code> und <code>FindGiftCertificates</code> sind dagegen fürs <b>Einlösen</b> eines vorhandenen Gutscheins als Zahlung gedacht.</div>
+<div class="warn"><b>Wichtig:</b> ReCalculateBasket übernimmt <code>CustomPrice</code> bei <b>jedem</b> Artikel – erst <b>ValidateBasket</b> prüft die Freigabe (Regel <code>ArticleCustomPrice</code>: „…unterstützt keinen kundenbezogenen Preis“). Darum vor der Zahlung unbedingt validieren.<br/>
+<b>Real getestet (16.10.2026, 35 €):</b> ✔ „Gutschein (Druck)“ (Listenpreis 5 €) → 35 € gültig (auch 0,50 € und 1000 € – keine Min/Max-Grenze); ✔ „Geldwertkarte Variabel“ (Digital-Wallet-Artikel, Listenpreis 100 €) → 35 € gültig; ✘ „Gutschein 50€“ und „Wertgutschein neu“ → ArticleCustomPrice. Achtung Geldwertkarte: <code>DigitalWalletCharge</code> zusätzlich setzen addiert (100 + 35 = 135) – für variablen Betrag nur <code>CustomPrice</code> verwenden.</div>
+<div class="step"><h3><span>1</span>Gutschein-Artikel wählen (<code>Articles/FindArticles</code>)</h3>
+<div class="when"><b>Wann:</b> Gutscheinseite aufbauen. FindArticles liefert <b>kein</b> Kennzeichen „variabel“ – welche Artikel freigegeben sind, muss der Shop kennen (Konfiguration) oder per Validate ausprobieren.</div>
+<button class="go" onclick="gvLoad()">Artikel laden</button> <select id="gvArt"></select>
+<div id="out-gv0"></div></div>
+<div class="step"><h3><span>2</span>Betrag eingeben → <code>General/ReCalculateBasket</code></h3>
+<div class="when"><b>Wann:</b> Kunde hat Betrag gewählt. Position: <code>{$type: ArticleSale, Article:{Id}, Quantity:1, CustomPrice: Betrag}</code>. Response: <code>unitPrice</code> = <code>customPrice</code> = Betrag.</div>
+<div class="row">Betrag (€) <input id="gvAmt" inputmode="decimal" style="width:90px" type="text" value="35"/></div>
+<button class="go" onclick="gvRecalc()">ReCalculateBasket</button>
+<div class="flow"><b>Weiter:</b> basket → ValidateBasket (hier oder im Tab Artikelkauf) → Zahlarten → Checkout.</div>
+<div id="out-gv1"></div></div>
+<div class="step"><h3><span>3</span><code>General/ValidateBasket</code></h3>
+<div class="when"><b>Wann:</b> Vor der Zahlung – prüft, ob der Artikel einen freien Betrag erlaubt.</div>
+<button class="go" onclick="gvValidate()">ValidateBasket</button><div id="out-gv2"></div></div>
+</div>
+<div class="tab" id="t-pro">
+<div class="when">Fortgeschrittene Warenkorb-Themen. Der Warenkorb ist derselbe wie im Tab Artikelkauf (State wird geteilt).</div>
+<div class="row">Warenkorb: <span class="cartView">leer</span></div>
+<div class="step"><h3><span>1</span>Multi-Positions-Warenkorb (heterogene <code>$type</code>s)</h3>
+<div class="when"><b>Wann:</b> Kunde kauft in einem Rutsch Artikel + Zeitfenster-Ticket + Gutschein. Alle Positionen liegen in <b>einem</b> <code>Items</code>-Array; jede Position trägt ihren eigenen <code>$type</code> (ArticleSale, ExpositionPeriodReservation mit lockTicket, ArticleSale mit CustomPrice …). ReCalculate/Validate/Checkout laufen gemeinsam. Gelockte Positionen werden <b>aus der Lock-Response</b> übernommen.</div>
+<button class="go" onclick="buildMulti()">Demo-Warenkorb bauen: Coca Cola + Badelandschaft (1 Kind, Lock) + Gutschein (Druck) 20 €</button>
+<div class="warn"><b>Real:</b> 2,50 + 5,00 + 20,00 = <b>27,50 €</b>, ValidateBasket isValid ✔.</div>
+<div id="out-multi"></div></div>
+<div class="step"><h3><span>2</span>Menge ändern / Position entfernen</h3>
+<div class="when"><b>Wann:</b> Kunde ändert den Warenkorb. <b>Nicht gelockte</b> Position (ArticleSale): Menge im Client ändern bzw. entfernen → ReCalculate. <b>Gelockte</b> Position (Ausstellung, Aktivität …): Mengenänderung = <code>UnlockBasketItems</code> + neues <code>LockBasketItems</code>; entfernen = <code>UnlockBasketItems</code> (gibt die Kapazität frei). ReLock ist nur für Zeitfenster-/Platzwechsel, nicht für Menge.</div>
+<div class="warn"><b>Real:</b> Ausstellung 1→3 Kinder via Unlock+Lock: 27,50 → 37,50 €; Coca Cola entfernt: 35,00 €.</div>
+<p>Nutze die Links „Menge“/„entfernen“ an jeder Position im Warenkorb oben.</p>
+<div id="out-qty"></div></div>
+<div class="step"><h3><span>3</span>LockTickets verlängern – <code>ExtendLockPeriod</code> / <code>ExtendLockPeriodByTime</code></h3>
+<div class="when"><b>Wann:</b> Locks laufen ab (Webshop-Konfig., hier ca. 30 min). <code>ExtendLockPeriod</code> bei jeder Nutzerinteraktion: setzt Ablauf = jetzt + Standarddauer. <code>ExtendLockPeriodByTime {Seconds}</code> rechnet ab <b>Erstellungszeitpunkt</b> des Locks (nicht ab jetzt!) – z.B. vor Weiterleitung zum PSP großzügig verlängern; negative Sekunden = bis 3000-12-31 („in Bezahlung“). Response: <code>extendedLocks.succeeded[]/failed[]</code>.</div>
+<div id="locks"></div>
+<div class="row">Sekunden <input id="extSec" style="width:80px" value="3600"/></div>
+<button class="go" onclick="extendLocks(false)">ExtendLockPeriod</button><button class="go" onclick="extendLocks(true)">ExtendLockPeriodByTime</button>
+<div class="warn"><b>Real:</b> ExtendLockPeriod → 17:51:53 → 17:51:55 (jetzt+30 min); ByTime 3600 s → 18:21 (Erstellung 17:21 + 1 h).</div>
+<div id="out-ext"></div></div>
+<div class="step"><h3><span>4</span>Teilzahlung / mehrere Zahlarten</h3>
+<div class="when"><b>Wann:</b> Kunde zahlt z.B. teils mit Gutschein/Wallet, Rest per Karte – oder Kasse: bar + Rechnung. <code>payments[]</code> enthält mehrere Einträge; <b>Summe muss exakt basket.price sein</b>, sonst ValidateBasket: „The total price of payments (…) must be equal to the total price…“.</div>
+<div class="row">Zahlart 1 <select id="sp1"></select> Betrag <input id="spA1" style="width:80px"/> Zahlart 2 <select id="sp2"></select> Betrag <input id="spA2" style="width:80px"/> <button class="go" onclick="splitPrep()" style="background:#888">Zahlarten laden &amp; 50/50 vorschlagen</button></div>
+<button class="go" onclick="splitValidate()">ValidateBasket mit 2 Payments</button>
+<div class="warn"><b>Real:</b> 17,50 RECHNUNG + 17,50 BARZAHLUNG = 35,00 → isValid ✔; 17,50 + 1,00 → ✘ Summenfehler. Kein Checkout ausgeführt.</div>
+<div id="out-split"></div></div>
+</div>
+<div class="tab" id="t-storno">
+<div class="step"><h3><span>1</span>Stornogründe – <code>General/FindReasons</code></h3>
+<div class="when"><b>Wann:</b> Vor einer Gutschrift: optionalen Storno-/Annullierungsgrund wählen (<code>ReasonID</code>).</div>
+<button class="go" onclick="loadReasons()">FindReasons</button> <select id="csReason"></select><div id="out-rs"></div></div>
+<div class="step"><h3><span>2</span>Gutschrift – <code>General/CreditSale</code></h3>
+<div class="when"><b>Wann:</b> Kompletter Storno eines gebuchten Verkaufs (z.B. Fehlbuchung, Kunde storniert). Body: <code>Criteria { SalesSeriesId (aus CheckoutBasket.salesSeriesId), ReturnPaymentMethodId (Rückzahlungsart aus ListPaymentMethods), ReasonID (optional) }</code> → <code>success</code>. Rückerstattung beim PSP erledigt der Shop selbst.</div>
+<div class="row">SalesSeriesId <input id="csSeries" style="width:300px"/> Rückzahlungsart <select id="csPm"></select></div>
+<div class="warn">⚠ Echte Gutschrift im Kassen-/Ticketsystem – Bestätigungsabfrage.<br/><b>Real (16.10.2026):</b> Fehlbuchung A0 („Pfand raus 20€“, −20 €, salesOrderNumber …, SalesSeriesId …) mit RECHNUNG + Grund „Storno“ → <code>success: true</code>.</div>
+<button class="go danger" onclick="creditSale()">CreditSale ausführen</button><div id="out-cs"></div></div>
+</div>
+<div class="tab" id="t-reg">
+<div class="when"><b>Registrierung:</b> ValidateUserName (Username frei?) → SavePerson mit vollständiger Adresse + Credential → Login. Passwort vergessen: ForgotPassword (Mail an Kunden) bzw. ResetPersonPassword (Admin/Backoffice-Reset für PersonIds).</div>
+<div class="step"><h3><span>1</span><code>General/ValidateUserName</code></h3>
+<div class="when"><b>Wann:</b> Live-Prüfung im Registrierungsformular. <code>hasSucceeded:true</code> = frei; <code>error:6</code> (HasUserName) = vergeben.</div>
+<div class="row">Username <input id="rUser"/></div><button class="go" onclick="call('General','ValidateUserName',{UserName:$('#rUser').value},'#out-vu')">ValidateUserName</button>
+<div class="warn"><b>Real:</b> neuer Name → hasSucceeded true; ein vergebener Name → error 6.</div><div id="out-vu"></div></div>
+<div class="step"><h3><span>2</span><code>General/SavePerson</code> mit Adresse + Login</h3>
+<div class="when"><b>Wann:</b> Absenden der Registrierung. <code>Address{Street,Number,Box,ZipCode,Town,Country}</code>, <code>Credential{Username,Password}</code>, <code>Options.CreateZipcodes</code> legt unbekannte PLZ an. Danach direkt einloggen (Leiste oben).</div>
+<div class="row">Vorname <input id="rFirst" value="" placeholder="Vorname"/> Nachname <input id="rLast" value="" placeholder="Nachname"/> E-Mail <input id="rMail" value="" placeholder="E-Mail"/> Tel. <input id="rPhone" value="" placeholder="Telefon"/></div>
+<div class="row">Straße <input id="rStreet" value="Musterweg"/> Nr. <input id="rNo" style="width:50px" value="12"/> Zusatz <input id="rBox" style="width:50px" value="a"/> PLZ <input id="rZip" style="width:70px" value="80331"/> Ort <input id="rTown" value="München"/> Land <input id="rCountry" style="width:40px" value="DE"/></div>
+<div class="row">Passwort <input id="rPw" value="Muster2026!"/> Geburtsdatum <input id="rBirth" type="date" value="1992-03-14"/></div>
+<button class="go" onclick="register()">SavePerson (Registrierung)</button>
+<div class="warn"><b>Real:</b> neue Person angelegt (personId, Login und Relation erfolgreich).</div><div id="out-reg"></div></div>
+
+
+</div>
+<div class="tab" id="t-fam">
+<div class="step"><h3><span>1</span>Relation anlegen – <code>General/SavePersonRelation</code></h3>
+<div class="when"><b>Wann:</b> Kunde verknüpft Familienmitglieder, um für sie mitzubuchen (z.B. Kinder bei Kursen: <code>ActivityParticipantReservations[].ParticipantId</code> = Relation, <code>Customer</code> = Rechnungskunde). Body: <code>PersonId1</code> (Hauptperson), <code>PersonId2</code>, <code>RelationType</code> (0 Unknown, 1 Household, 2 Family, 3 Business, 4 Contact), <code>Comment</code>.</div>
+<div class="row">PersonId2 <input id="relP2" style="width:300px" value="" placeholder="PersonId"/> Typ <input id="relT" style="width:40px" value="1"/></div>
+<button class="go" onclick="call('General','SavePersonRelation',{PersonId1:cust(),PersonId2:$('#relP2').value.trim(),Comment:'Demo',RelationType:Number($('#relT').value)},'#out-rel')">SavePersonRelation</button>
+<button class="go" onclick="call('General','FindPerson',{Criteria:{Id:cust(),Includes:{Relations:true}}},'#out-rel')">FindPerson (Includes.Relations)</button>
+<div class="warn"><b>Real:</b> Testkunde ↔ zweite Person (Household) → isValid ✔; FindPerson liefert <code>relations[]</code> mit der zweiten Person. GetFamilyCards → leer.</div><div id="out-rel"></div></div>
+
+</div>
+<div class="tab" id="t-master">
+
+<div class="step"><h3><span>2</span>Produktfilter – <code>ListArticleGroups</code>, <code>FindArticleCategories</code>, <code>FindAllergens</code></h3>
+<div class="when"><b>Wann:</b> Navigation/Filter im Shop (Gruppen = Sortiment, Kategorien = Baum über <code>parentCategoryId</code>, Allergene für Gastro). Danach FindArticles mit passender Gruppe/Kategorie filtern.</div>
+<button class="go" onclick="loadFilters()">alle drei laden</button>
+<div class="warn"><b>Real:</b> 4 Artikelgruppen (z.B. Gastro), 23 Kategorien (z.B. Menüs), 14 Allergene (z.B. Milk, mit Übersetzungen).</div>
+<div id="filters"></div><div id="out-flt"></div></div>
+</div>
+
+<div class="tab" id="t-res">
+<div class="when"><b>Platz-/Raumreservierung (Facility):</b> ListReservationActivities (was? z.B. Massage) → ListInfrastructures (wo? inkl. Plätze) (inkl. Plätze). Gezeigt werden die real vorhandenen Stammdaten.</div>
+<div class="step"><h3><span>1</span>Stammdaten</h3>
+<button class="go" onclick="call('Reservations','ListReservationActivities',{SearchCriteria:{Includes:{},Paging:{PageIndex:0,PageSize:20}}},'#out-res')">ListReservationActivities</button>
+<button class="go" onclick="call('Reservations','ListInfrastructures',{SearchCriteria:{Includes:{IncludePlaces:true},Paging:{PageIndex:0,PageSize:20}}},'#out-res')">ListInfrastructures (+Places)</button>
+
+<div class="warn"><b>Real:</b> 5 Reservierungsaktivitäten (AYURLANKA, FUßMASSAGE, KATEGORIE01/02, ÜE), 5 Infrastrukturen mit Plätzen (BB, LEHRSCHWIMMBECKEN, MASSAGEN, S2, WOHNWAGENSTELLPLÄTZE); Plätze kommen über IncludePlaces. Hier nur Stammdaten – eine Platzbuchung ist im Demo-Shop nicht durchspielbar.</div><div id="out-res"></div></div>
+</div>
+<div class="tab" id="t-flow">
+<div class="when"><b>Welcher Call wann?</b> Der Standard-Kauffluss als Diagramm. Grün = Pflicht, blau = je nach Produkt, grau = optional. Klick auf einen Kasten öffnet den passenden Tab.</div>
+<svg id="flowSvg" style="width:100%;max-width:1100px;font:13px system-ui" viewbox="0 0 1000 560">
+<defs><marker id="ar" markerheight="10" markerwidth="10" orient="auto" refx="9" refy="3"><path d="M0,0 L0,6 L9,3 z" fill="#555"></path></marker></defs>
+<g id="flowG"></g></svg>
+<div class="flow"><b>Datenfluss:</b> Produkte (FindArticles / Expositions / Abos …) → <b>BasketItems</b> (mit <code>$type</code>) → bei Kapazitätsprodukten <b>LockBasketItems</b> → Items <b>aus der Lock-Response</b> → <b>ReCalculateBasket</b> → komplettes <code>basket</code> → + <code>payments[]</code> (aus ListPaymentMethods, Summe = price) → <b>ValidateBasket</b> → PSP-Zahlung → <b>CheckoutBasket</b> → <code>salesItems[].id</code> → <b>E-Ticket-URL</b>; Storno: <code>salesSeriesId</code> → CreditSale.</div></div>
+
+<div class="tab" id="t-acc">
+<div class="when">Alles read-only, für den eingeloggten Kunden (Leiste oben).</div>
+<div class="step"><h3><span>1</span>Bestellhistorie – <code>Articles/FindArticleSalesOrders</code></h3>
+<div class="when"><b>Wann:</b> „Meine Käufe“. <code>SearchCriteria{PersonId, From, Until, Type, Paging}</code> → je Verkaufszeile articleName, number (Verkaufsnummer), date, Preis.</div>
+<div class="row">Von <input id="hFrom" type="date"/> Bis <input id="hUntil" type="date"/></div>
+<button class="go" onclick="history1()">FindArticleSalesOrders</button>
+<div class="warn"><b>Real:</b> 14 Zeilen für den Testkunden (inkl. Gutschrift „Pfand raus 20€“ aus dem CreditSale).</div><div id="histTbl"></div><div id="out-h1"></div></div>
+
+<div class="step"><h3><span>3</span>E-Tickets des Kunden – <code>General/FindETickets</code></h3>
+<div class="when"><b>Wann:</b> „Meine Tickets“ / Ticket erneut herunterladen. <code>Criteria{PersonId, From, Until, Paging}</code> → ticketNo, expositionName, Datum; PDF dann per E-Ticket-URL. (Methodenname im JSON-Modul General, nicht Profile.)</div>
+<button class="go" onclick="etickets()">FindETickets</button>
+<div class="warn"><b>Real:</b> 3 Badelandschaft-Tickets (Barcodes 5298651494164827, 5298676477122590, 5298676533859727).</div><div id="etTbl"></div><div id="out-h3"></div></div>
+<div class="step"><h3><span>4</span>Externe Kunden-ID – <code>SavePersonExternalMasterId</code> / <code>GetExternalMapping</code></h3>
+<div class="when"><b>Wann:</b> Kunde existiert auch im eigenen CRM/Shop-System → dessen ID im Kassen-/Ticketsystem hinterlegen (<code>Person.externalMasterID</code>), damit man ihn später wiederfindet. <code>GetExternalMapping{ExternalId|ExternalStringId, Entity}</code> fragt Mapping-Tabellen für Integrationen ab.</div>
+<div class="row">ExternalMasterId <input id="extId" value="" placeholder="z. B. EXT-123"/></div>
+<button class="go" onclick="call('General','SavePersonExternalMasterId',{Criteria:{PersonId:cust(),ExternalMasterId:$('#extId').value}},'#out-ext2')">SavePersonExternalMasterId</button>
+
+<div class="warn"><b>Real:</b> SavePersonExternalMasterId eine Test-ID am Testkunden → isValid ✔, FindPerson zeigt <code>externalMasterID</code>. GetExternalMapping → <code>null</code> (eigene Mapping-Tabelle, nicht mit externalMasterID verknüpft).</div><div id="out-ext2"></div></div>
+</div>
+<div class="tab" id="t-err">
+<div class="when"><b>Fehlerarten:</b> (a) <b>fachlich</b>: HTTP 200, <code>isValid:false</code> + <code>message</code> + <code>brokenRuleName</code> (pro Position max. 1 Regel) → dem Kunden anzeigen/korrigieren; (b) <b>technisch</b>: HTTP 200/500 mit <code>{"succes":false,"message":…}</code> (Achtung Tippfehler „succes“) → loggen, Flow neu starten; (c) Netzwerk/CORS → Retry.</div>
+<div class="step"><h3><span>1</span>Typische Fehler live provozieren</h3>
+<button class="go" onclick="errSum()">Payment-Summe falsch</button><button class="go" onclick="errNoPay()">ohne Payment</button><button class="go" onclick="errDup()">doppelte PriceGroup im Lock</button><button class="go" onclick="errFakeLock()">ungültiges LockTicket</button>
+<table><tr><th>Fall</th><th>Antwort (real)</th><th>so reagiert man</th></tr>
+<tr><td>Summe payments ≠ price</td><td><code>InvalidTotalPaymentAmount</code> „The total price of payments (6,0) must be equal to … (5,0)“</td><td>payments aus <code>basket.price</code> neu bilden (nie selbst rechnen)</td></tr>
+<tr><td>keine payments</td><td><code>MissingPayment</code> „missing payments“</td><td>ListPaymentMethods → payment ergänzen</td></tr>
+<tr><td>gleiche group.id zweimal</td><td>Lock <code>isLocked:false</code>, „Ein Element mit dem gleichen Schlüssel wurde bereits hinzugefügt.“</td><td>Entries je group.id zusammenfassen (ParticipantCount addieren)</td></tr>
+<tr><td>erfundenes LockTicket</td><td>ReCalculate <code>succes:false</code> „Die Ausstellungsreservierung muss gesperrt sein“; ExtendLockPeriod → <code>failed[]</code></td><td>Position neu locken</td></tr>
+<tr><td>Lock schon freigegeben/abgelaufen</td><td>ReCalculate + Validate <b>ok</b> (!) – die Position wird beim Checkout behandelt, als hätte sie keinen Lock (Kapazität nicht garantiert)</td><td>vor Zahlung ExtendLockPeriod prüfen (<code>failed[]</code> leer?)</td></tr>
+<tr><td>Pilates (vergangen, 0 €) Checkout</td><td><code>succes:false</code> „Es wurde versucht, durch 0 (null) zu teilen.“</td><td>technischer Fehler → Position entfernen/Support; nicht endlos wiederholen</td></tr>
+<tr><td>CustomPrice nicht erlaubt</td><td><code>ArticleCustomPrice</code></td><td>Artikel ohne freien Betrag anbieten</td></tr>
+<tr><td>Reseller inaktiv</td><td><code>ArticleResellerPeriod</code></td><td>AsReseller entfernen / Backoffice</td></tr></table>
+<div id="out-err"></div></div>
+<div class="step"><h3><span>2</span>Retry/Recovery nach fehlgeschlagener Zahlung</h3>
+<div class="when"><b>Ablauf:</b> Validate ✔ → Weiterleitung zum PSP → Zahlung scheitert/abgebrochen. Es wurde <b>nichts gebucht</b> (Checkout kam nie). Gelockte Positionen verfallen beim Lock-Ablauf automatisch (temporäre Reservierungen werden gelöscht); Coupons ggf. per <code>CouponRelease</code> freigeben. <b>Neustart:</b> (1) <code>ExtendLockPeriod</code> – succeeded? dann weiter mit (3); failed → (2) Positionen neu <code>LockBasketItems</code> (aus den ursprünglichen Wünschen, nicht aus dem alten Lock) → (3) <code>ReCalculateBasket</code> → (4) <code>ValidateBasket</code> → erneute Zahlung. Tipp: vor PSP-Redirect <code>ExtendLockPeriodByTime</code> mit großzügiger Dauer, und den Basket (StateBag) lokal sichern.</div>
+<button class="go" onclick="recovery()">Recovery für aktuellen Warenkorb durchspielen</button><div id="out-rec"></div></div></div>
+<div class="tab" id="t-lang">
+<div class="when"><b>Sprache:</b> <code>Context.Language</code> (ISO 639-1, Default NL) steuert Texte/Namen in der Response. Der Schalter setzt die Sprache für <b>alle</b> Calls (gleiches Feld wie oben in der Konfiguration).</div>
+<div class="row">Sprache: <button class="go" onclick="setLang('de')">de</button><button class="go" onclick="setLang('en')">en</button><button class="go" onclick="setLang('nl')">nl</button><button class="go" onclick="setLang('fr')">fr</button> aktiv: <b id="langNow"></b></div>
+<button class="go" onclick="langDemo()">FindAllergens + FindArticles in aktueller Sprache</button>
+<div class="warn"><b>Real:</b> Demo-Shop pflegt Stammdaten nur einsprachig – Namen kommen in de/en/nl/fr gleich (z.B. Allergen „Milk“, Zahlart „BARZAHLUNG“). Übersetzungen liegen zusätzlich im Feld <code>translations[]</code> (z.B. Allergen Milk → fr „Lait“) – die Tabelle zeigt sie. Fehlermeldungen (message) kommen dagegen in der Context-Sprache.</div>
+<div id="langTbl"></div><div id="out-lang"></div></div>
+<div class="tab" id="t-raw">
+<div class="when"><b>Spielwiese:</b> beliebige Methode aus dem Methodenindex (19 Module, 594 Methoden) mit freiem JSON-Body. Der Context (ShopId/Password/SessionId/Language/Origin) wird automatisch ergänzt. Beispiel-Bodies: siehe <code>/json/documentation</code> der API.</div>
+<div class="row">Modul <select id="rawMod" onchange="rawFill()"></select> Methode <select id="rawMeth"></select> <a href="#" id="rawDoc" target="_blank">Doku zur Methode</a></div>
+<textarea id="rawBody" style="width:100%;height:180px;font:12px monospace">{ "SearchCriteria": { "Includes": { "Price": true } } }</textarea>
+<div class="warn">⚠ Schreibende Methoden (Checkout, Save*, Credit*, Delete*) wirken echt.</div>
+<button class="go" onclick="rawSend()">Senden</button><div id="out-raw"></div></div>
+<div class="tab" id="t-state"><div class="when">Aktueller Client-State (so etwas würde ein echter Shop in Session/LocalStorage halten).</div><button class="go" onclick="showState()">aktualisieren</button><pre id="state"></pre></div>
+</main>
+<script>
+const T=t=>{const n=($('#ns')&&$('#ns').value.trim())||'Contracts';return `${n}.${t}, ${n}`};
+const EMPTY='00000000-0000-0000-0000-000000000000';
+const $=s=>document.querySelector(s);
+const S={articles:[],items:[],basket:null,paymentMethodId:null,salesItems:null,expo:{},prices:[]};
+function guid(){return crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c=='x'?r:(r&3|8)).toString(16)})}
+function newSid(){$('#sid').value=guid()} newSid();
+// Lokale Zeit OHNE Zeitzone (kein toISOString → würde nach UTC verschieben!)
+const pad=n=>String(n).padStart(2,'0');
+function localDT(d,time='00:00:00'){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${time}`}
+function dateInput(id,offsetDays){const d=new Date();d.setDate(d.getDate()+offsetDays);$(id).value=localDT(d).slice(0,10)}
+dateInput('#xFrom',0);dateInput('#xUntil',30);dateInput('#rbDate',2);
+$('#pUser').value=$('#aUser').value='demo_'+guid().slice(0,8);$('#pMail').value=$('#fMail').value=$('#pUser').value+'@example.com';
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.tab').forEach(e=>e.classList.remove('on'));b.classList.add('on');$('#'+b.dataset.t).classList.add('on');if(b.dataset.t=='t-state')showState()});
+function ctx(){return{ShopId:$('#shopId').value.trim(),Password:$('#pw').value,SessionId:$('#sid').value.trim(),Origin:Number($('#origin').value),Language:$('#lang').value}}
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const GUIDRE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function call(mod,meth,body,out){
+  const c0=ctx();if(!GUIDRE.test(c0.ShopId)||!GUIDRE.test(c0.SessionId)){$(out).innerHTML=`<p class="bad">✘ ${!GUIDRE.test(c0.ShopId)?'ShopId':'SessionId'} ist keine gültige GUID – der Server würde mit HTTP 500 ohne CORS-Header antworten (Browser: „Failed to fetch“). Bitte korrigieren bzw. „Neue SessionId“ klicken.</p>`;return null}
+  const url=`${$('#base').value.replace(/\/$/,'')}/${mod}/${meth}/`;
+  const req=Object.assign({},body,{Context:ctx()});
+  const shown=JSON.parse(JSON.stringify(req));shown.Context.Password='••••••';
+  const xid='x'+Math.random().toString(36).slice(2);S._exp=S._exp||{};S._exp[xid]={url,body:shown};const el=$(out);el.innerHTML=`<div class="io"><div><h4>Request <button class="go" style="padding:2px 8px;font-size:11px;background:#555" onclick="exportReq('${xid}','curl')">als curl</button><button class="go" style="padding:2px 8px;font-size:11px;background:#555" onclick="exportReq('${xid}','postman')">als Postman</button></h4><div class="url">POST ${esc(url)}</div><div class="url">Content-Type: application/json</div><pre>${esc(JSON.stringify(shown,null,2))}</pre></div><div><h4>Response</h4><pre>… lädt</pre></div></div>`;
+  const pre=el.querySelectorAll('pre')[1];const t0=performance.now();
+  try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
+    const txt=await r.text();let j;try{j=JSON.parse(txt)}catch{j={raw:txt}}
+    pre.textContent=`// HTTP ${r.status} – ${Math.round(performance.now()-t0)} ms\n`+JSON.stringify(j,null,2);return j;
+  }catch(e){pre.textContent='Fehler: '+e+'\n(CORS/Netzwerk? Siehe README)';return null}}
+// ---------- Artikel ----------
+async function findArticles(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true}}},'#out-fa');if(!r)return;
+  S.articles=r.articles||[];$('#arts').innerHTML='<table><tr><th>Artikel</th><th>Listenpreis</th><th>id</th><th></th></tr>'+S.articles.map((a,i)=>`<tr><td>${esc(a.name||'')}</td><td>${a.price??''}</td><td><small>${a.id}</small></td><td><button class="go" onclick="addArt(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
+function addArt(i){const a=S.articles[i];const ex=S.items.find(x=>x.Article&&x.Article.Id==a.id);if(ex)ex.Quantity++;else S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});S._names=S._names||{};S._names[a.id]=a.name;renderCart()}
+function itemLabel(x){const t=(x.$type||x['$type']||'').split(',')[0].split('.').pop();const a=x.Article||x.article;const q=x.Quantity??x.quantity;
+  if(a)return `${q}× ${esc((S._names||{})[a.Id||a.id]||a.name||a.Id||a.id)}${(x.CustomPrice||x.customPrice)?' ('+(x.CustomPrice||x.customPrice)+' €)':''}`;
+  const en=x.entries||x.Entries;if(en)return `${t} (${en.map(e=>(e.participantCount??e.ParticipantCount)+' Pers.').join(' + ')})`;return t}
+function renderCart(){const h=S.items.length?S.items.map((x,i)=>`<span style="border:1px solid #ccc;border-radius:4px;padding:2px 6px;margin-right:4px">${itemLabel(x)} <a href="#" onclick="changeQty(${i});return false">Menge</a> · <a href="#" onclick="removeItem(${i});return false">entfernen</a>${(x.lockTicket||x.LockTicket)?' 🔒':''}</span>`).join(''):'leer';
+  document.querySelectorAll('.cartView').forEach(e=>e.innerHTML=h);$('#cartView').innerHTML=h;renderLocks()}
+async function recalc(out,withCoupons){if(!S.items.length){alert('Warenkorb ist leer – erst Positionen hinzufügen');return}const cid=cust();
+  const items=S.items.map(x=>{if(x.$type&&x.$type.includes('ArticleSale')&&'CustomerID'in x)x.CustomerID=cid;return x});
+  const basket={$type:T('Basket'),CustomerId:cid,Items:items,Price:0};
+  const r=await call('General','ReCalculateBasket',{Basket:basket},out);
+  if(r&&r.basket){S.basket=r.basket;S.items=r.basket.items;renderCart()}}
+async function listPM(){const r=await call('General','ListPaymentMethods',{},'#out-pm');if(!r)return;
+  $('#pmSel').innerHTML=(r.paymentMethods||[]).map(p=>`<option value="${p.id}">${esc(p.name)} (${esc(p.code||'')})</option>`).join('');const inv=(r.paymentMethods||[]).find(p=>p.invoicePaymentMethod);if(inv)$('#pmSel').value=inv.id;S.paymentMethodId=$('#pmSel').value}
+function withPayment(){if(!S.basket){alert('Erst ReCalculateBasket ausführen');return null}
+  if(!S.paymentMethodId){alert('Erst ListPaymentMethods ausführen');return null}
+  const b=JSON.parse(JSON.stringify(S.basket));b.payments=[{$type:T('BasketPayment'),Amount:b.price,Currency:'EUR',PaymentMethodId:S.paymentMethodId}];return b}
+async function validate(){const b=withPayment();if(!b)return;const r=await call('General','ValidateBasket',{basket:b},'#out-val');
+  if(r&&r.result)$('#out-val').insertAdjacentHTML('afterbegin',r.result.isValid?'<p class="ok">✔ isValid = true – Zahlung darf gestartet werden</p>':`<p class="bad">✘ ungültig: ${esc(r.result.message||'')} (${esc(r.result.brokenRuleName||'')})</p>`)}
+async function checkout(){const b=withPayment();if(!b)return;
+  if(!confirm('ACHTUNG: CheckoutBasket bucht einen ECHTEN Verkauf im Kassen-/Ticketsystem (Shop '+ctx().ShopId+').\nBetrag: '+b.price+' EUR\nWirklich ausführen?'))return;
+  const body={basket:b};const oid=$('#orderId').value.trim();if(oid)body.orderId=oid;
+  const r=await call('General','CheckoutBasket',body,'#out-co');
+  const res=r&&(r.result||r);const si=res&&res.salesItems;
+  if(si&&si.length){S.salesItems=si;S.lastSale={salesSeriesId:res.salesSeriesId,salesOrderNumber:res.salesOrderNumber};$('#salesItemId').value=si[0].id;if($('#csSeries'))$('#csSeries').value=res.salesSeriesId||'';setTimeout(eticket,0);$('#out-co').insertAdjacentHTML('afterbegin',`<p class="ok">✔ resultState=${res.resultState} – SalesItemId in Schritt 6 übernommen</p>`)}}
+function eticket(){const id=$('#salesItemId').value.trim();if(!id){alert('SalesItemId fehlt (aus CheckoutBasket)');return}
+  const u=`${$('#docBase').value.replace(/\/$/,'')}/WebShopDocumentService.svc/ETickets/${ctx().ShopId}/${ctx().Language}/${id}/`;
+  const uu=u;$('#out-et').innerHTML=`<p>GET <a class="url" href="${uu}" target="_blank">${esc(uu)}</a> · <a href="${uu}" download="eticket-${id}.pdf">⬇ Download</a></p><p><small>Liefert das PDF direkt (Content-Type application/pdf). Real: Ausstellungs-Ticket → PDF 154 KB; Artikel ohne Barcode/Vorlage → leere Antwort.</small></p><iframe src="${uu}" style="width:100%;height:500px;border:1px solid #ccc"></iframe>`}
+// ---------- Kunden ----------
+async function savePerson(){const r=await call('General','SavePerson',{Person:{Id:EMPTY,Name:{First:$('#pFirst').value,Last:$('#pLast').value},
+  Address:{Street:'Teststr.',Number:'1',Box:'',ZipCode:'10115',Town:'Berlin',Country:'DE'},BirthDate:$('#pBirth').value+'T00:00:00',
+  Credential:{Username:$('#pUser').value,Password:$('#pPw').value},Email:$('#pMail').value,Gender:0,IsBlocked:false,Language:ctx().Language,Phone:''},
+  Options:{CreateZipcodes:true,IgnoreCredentials:false,IgnoreDuplicates:true,ChangeFamilyMembersAddress:false,SkipAgeValidation:true}},'#out-sp');
+  const id=r&&r.result&&r.result.person&&r.result.person.id;if(id){setCustomer(id,$('#pFirst').value+' '+$('#pLast').value);$('#out-sp').insertAdjacentHTML('afterbegin',`<p class="ok">✔ Kunde ${id} angelegt – als CustomerId übernommen</p>`)}}
+async function authUser(){const r=await call('General','AuthenticateUser',{Credentials:{Username:$('#aUser').value,Password:$('#aPw').value}},'#out-au');
+  if(r&&r.result){if(r.result.hasSucceeded){setCustomer(r.result.personId,$('#aUser').value);$('#out-au').insertAdjacentHTML('afterbegin',`<p class="ok">✔ Login ok – CustomerId ${r.result.personId} übernommen. Jetzt ReCalculateBasket erneut!</p>`)}else $('#out-au').insertAdjacentHTML('afterbegin',`<p class="bad">✘ Login fehlgeschlagen (error=${r.result.error})</p>`)}}
+async function findPerson(){await call('General','FindPerson',{Criteria:{Email:$('#fMail').value}},'#out-fp')}
+// ---------- Expositions ----------
+async function findExpo(){const r=await call('Expositions','FindExpositions',{SearchCriteria:{Includes:{Pricing:true}}},'#out-fx');
+  const l=(r&&r.result&&r.result.expositions)||[];$('#expoSel').innerHTML=l.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}
+async function findDates(){const r=await call('Expositions','FindExpositionPeriodDates',{SearchCriteria:{ExpositionId:$('#expoSel').value,From:$('#xFrom').value+'T00:00:00',Until:$('#xUntil').value+'T23:59:59'}},'#out-fd');
+  const l=((r&&r.dates)||[]).filter(d=>d.isAvailable);$('#dateSel').innerHTML=l.map(d=>`<option>${d.date.slice(0,10)}</option>`).join('')}
+async function listPeriods(){const d=$('#dateSel').value;if(!d)return alert('Erst Datum wählen');
+  const r=await call('Expositions','ListExpositionPeriods',{SearchCriteria:{ExpositionId:$('#expoSel').value,From:d+'T00:00:00',Until:d+'T23:59:59'}},'#out-lp');
+  const l=(r&&r.expositionPeriods)||[];$('#perSel').innerHTML=l.map(p=>`<option value="${p.id}">${p.from.slice(11,16)}–${p.until.slice(11,16)} (frei: ${p.occupancy?p.occupancy.remaining:'?'})</option>`).join('')}
+async function findPrices(){const d=$('#dateSel').value;if(!d)return alert('Erst Datum wählen');
+  const r=await call('Expositions','FindExpositionPrices',{Criteria:{ExpositionId:$('#expoSel').value,ExpositionPeriodDate:d+'T00:00:00',IncludeActivePeriods:true}},'#out-pr');
+  S.allPrices=(r&&r.expositionPrices)||[];S.prices=Object.values(S.allPrices.reduce((m,p)=>{if(!m[p.group.id]||p.minimumQuantity<m[p.group.id].minimumQuantity)m[p.group.id]=p;return m},{}));$('#prices').innerHTML='<table><tr><th>Tickettyp (group.name)</th><th>Preis</th><th>group.id → PriceGroupId</th><th>Anzahl</th></tr>'+S.prices.map((p,i)=>`<tr><td>${esc(p.group.name)}</td><td>${p.amount}</td><td><small>${p.group.id}</small></td><td><input class="s" style="width:50px" type="number" min="0" id="pq${i}" value="${i==0?1:0}"></td></tr>`).join('')+'</table>'}
+async function lockItems(){if(!$('#perSel').value)return alert('Erst Zeitfenster wählen');
+  const entries=S.prices.map((p,i)=>({$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:p.group.id,ParticipantCount:Number($('#pq'+i).value)})).filter(e=>e.ParticipantCount>0);
+  if(!entries.length)return alert('Mindestens ein Ticket wählen (Schritt 4)');
+  const r=await call('General','LockBasketItems',{BasketItems:[{$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:$('#expoSel').value,ExpositionPeriodId:$('#perSel').value,Quantity:1,Entries:entries,CustomerId:cust()}]},'#out-lk');
+  const lr=r&&r.lockBasketResult;if(lr&&lr.isLocked){S.items=S.items.concat(lr.basketItems);S.basket=null;renderCart();$('#out-lk').insertAdjacentHTML('afterbegin','<p class="ok">✔ isLocked = true – Positionen inkl. lockTicket zum Warenkorb hinzugefügt. Weiter im Tab „Artikelkauf“ ab Schritt 2.</p>')}
+  else if(lr)$('#out-lk').insertAdjacentHTML('afterbegin',`<p class="bad">✘ nicht gelockt: ${esc((lr.validationResult&&lr.validationResult.message)||'')}</p>`)}
+async function unlockItems(){if(!S.items.length)return alert('Warenkorb leer');const r=await call('General','UnlockBasketItems',{BasketItems:S.items},'#out-lk');
+  if(r&&r.unlockBasketItemsResult&&r.unlockBasketItemsResult.isValid){S.items=[];S.basket=null;renderCart()}}
+// ---------- Coupons ----------
+const cust=()=>S.customerId||EMPTY;const custOrNull=()=>S.customerId||null;
+function setCustomer(id,name){S.customerId=id;S.customerName=name;$('#custId').value=id||EMPTY;
+  S.items.forEach(x=>{if('CustomerID'in x)x.CustomerID=cust()});
+  $('#loginStatus').className=id?'ok':'bad';$('#loginStatus').textContent=id?`🟢 eingeloggt als ${name} – CustomerId ${id}`:'⚪ anonym – CustomerId = Empty-GUID'}
+async function login(){const r=await call('General','AuthenticateUser',{Credentials:{Username:$('#lUser').value,Password:$('#lPw').value}},'#out-login');
+  const a=r&&r.result;if(a&&a.hasSucceeded){S.person=a.person;setCustomer(a.personId,a.person&&a.person.name?`${a.person.name.first} ${a.person.name.last}`:$('#lUser').value);$('#out-login').insertAdjacentHTML('afterbegin','<p class="ok">✔ Login ok. Warenkorb bitte neu berechnen (ReCalculateBasket) – Preise können sich ändern.</p>')}
+  else $('#out-login').insertAdjacentHTML('afterbegin',`<p class="bad">✘ Login fehlgeschlagen (error=${a&&a.error})</p>`)}
+function logout(){setCustomer(null,null);S.person=null;S.priceGroups=null;$('#out-login').innerHTML='<p>Abgemeldet – ab jetzt anonym.</p>'}
+async function personPG(){if(!S.customerId)return alert('Erst einloggen');const r=await call('General','FindPerson',{Criteria:{Id:S.customerId,Includes:{PriceGroups:true}}},'#out-ppg');
+  const p=r&&r.result&&r.result[0];S.priceGroups=(p&&((p.settings&&p.settings.priceGroups)||p.priceGroups))||[];
+  $('#out-ppg').insertAdjacentHTML('afterbegin',S.priceGroups.length?`<p class="ok">Kunde hat ${S.priceGroups.length} Preisgruppe(n): ${S.priceGroups.map(g=>esc(((g.priceGroup&&g.priceGroup.name)||'')+' (Typ '+g.type+')')).join(', ')}</p>`:'<p class="bad">Kunde hat keine Preisgruppe → Standardpreise.</p>')}
+async function loadCmpArts(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true},Paging:{PageIndex:0,PageSize:100}}},'#out-cmp');
+  $('#cmpArt').innerHTML=((r&&r.articles)||[]).filter(a=>a.price>0).map(a=>`<option value="${a.id}">${esc(a.name)} (${a.price})</option>`).join('')}
+async function compare(){const aid=$('#cmpArt').value;if(!aid)return alert('Erst Artikel laden');if(!S.customerId)return alert('Erst einloggen (oben)');
+  const it=c=>[{$type:T('ArticleSale'),Id:guid(),Article:{Id:aid},Quantity:1,CustomerID:c}];const res={};
+  for(const [k,c] of [['anonym',EMPTY],['kunde',S.customerId]]){
+    const pi=await call('Articles','GetArticlePriceInformation',{SearchCriteria:{ArticleId:aid,CustomerId:c}},'#out-cmp');
+    const rc=await call('General','ReCalculateBasket',{Basket:{$type:T('Basket'),CustomerId:c,Items:it(c),Price:0}},'#out-cmp');
+    res[k]={pi:pi&&pi.articlePriceInformation,rc:rc&&rc.basket&&rc.basket.price}}
+  const diff=res.anonym.rc!==res.kunde.rc;
+  $('#cmpRes').innerHTML=`<table><tr><th></th><th>GetArticlePriceInformation.totalPrice</th><th>priceGroup</th><th>ReCalculateBasket.price</th></tr>${['anonym','kunde'].map(k=>`<tr><td>${k}</td><td>${res[k].pi?res[k].pi.totalPrice:'–'}</td><td>${esc(String(res[k].pi&&res[k].pi.priceGroup||'–'))}</td><td><b>${res[k].rc??'–'}</b></td></tr>`).join('')}</table>`+(diff?'<p class="ok">✔ Preisunterschied – der Kunde ist in einer Rabatt-/Preisgruppe.</p>':'<p class="bad">= gleicher Preis – Kunde hat für diesen Artikel keine wirksame Preisgruppe.</p>');S.lastCompare=res}
+async function rbPeriods(){const d=$('#rbDate').value;const r=await call('Expositions','ListExpositionPeriods',{SearchCriteria:{ExpositionId:$('#expoSel').value,From:d+'T00:00:00',Until:d+'T23:59:59'}},'#out-rl');
+  $('#rbPer').innerHTML=((r&&r.expositionPeriods)||[]).map(p=>`<option value="${p.id}">${p.from.slice(0,16)} (frei ${p.occupancy?p.occupancy.remaining:'?'})</option>`).join('')}
+async function relock(){const it=S.items.filter(x=>(x.$type||x['$type']||'').includes('ExpositionPeriodReservation'));if(!it.length)return alert('Erst LockBasketItems (Schritt 5)');if(!$('#rbPer').value)return alert('Zielzeitfenster wählen');
+  S.rebookOld=JSON.parse(JSON.stringify(it));const moved=JSON.parse(JSON.stringify(it));moved.forEach(x=>x.expositionPeriodId=$('#rbPer').value);
+  const r=await call('General','ReLockBasketItems',{BasketItems:moved},'#out-rl');const lr=r&&r.lockBasketResult;
+  if(lr&&lr.isLocked){S.rebookNew=lr.basketItems;S.rebookMoved=moved;$('#out-rl').insertAdjacentHTML('afterbegin',`<p class="ok">✔ isLocked. Altes LockTicket ${esc(it[0].lockTicket.id)} → neues ${esc(lr.basketItems[0].lockTicket.id)} (expirationTime ${esc(lr.basketItems[0].lockTicket.expirationTime)})</p>`)}}
+async function rcAfterRelock(which){if(!S.rebookNew)return alert('Erst ReLock');const items=which=='new'?S.rebookNew:S.rebookMoved;
+  const r=await call('General','ReCalculateBasket',{Basket:{$type:T('Basket'),CustomerId:cust(),Items:items,Price:0}},'#out-rl');
+  if(r&&r.basket){S.basket=r.basket;S.items=r.basket.items;renderCart();$('#out-rl').insertAdjacentHTML('afterbegin','<p class="ok">✔ ReCalculate ok – weiter mit ValidateBasket im Tab Artikelkauf.</p>')}}
+async function rebookViaUnlock(){if(!S.items.length)return alert('Erst Lock');await call('General','UnlockBasketItems',{BasketItems:S.items},'#out-rl');S.items=[];
+  const sel=$('#perSel');if($('#rbPer').value){sel.innerHTML+=`<option value="${$('#rbPer').value}">Ziel</option>`;sel.value=$('#rbPer').value}await lockItems();$('#out-rl').innerHTML='<p>Unlock ausgeführt, neuer Lock siehe Schritt 5.</p>'}
+async function findAbos(){const r=await call('Subscriptions','FindSubscriptionArticles',{Criteria:{Includes:{Prices:true},Paging:{PageIndex:0,PageSize:50}}},'#out-abo');
+  S.abos=(r&&r.subscriptionArticles)||[];$('#abos').innerHTML='<table><tr><th>Abo/Karte</th><th>Preis</th><th>Eintritte</th><th></th></tr>'+S.abos.map((a,i)=>`<tr><td>${esc(a.name)}</td><td>${a.price}</td><td>${a.numberOfTurns??''}</td><td><button class="go" onclick="addAbo(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
+function addAbo(i){const a=S.abos[i];S._names=S._names||{};S._names[a.id]=a.name;S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});renderCart();alert('Im Warenkorb – weiter im Tab Artikelkauf, Schritt 2 (ReCalculateBasket)')}
+async function gvLoad(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true},Paging:{PageIndex:0,PageSize:100}}},'#out-gv0');
+  const l=((r&&r.articles)||[]).filter(a=>/gutschein|geldwert|gwk|voucher/i.test(a.name));
+  const ok=['34ac8db6-eb6d-f011-b125-a63f2ac99bc4','bb47a697-66cf-f011-b128-ba6c4355f9e2'];
+  $('#gvArt').innerHTML=l.map(a=>`<option value="${a.id}">${esc(a.name)} (Liste ${a.price} €)${ok.includes(a.id)?' ✔ variabel getestet':''}</option>`).join('');if(l.some(a=>a.id==ok[0]))$('#gvArt').value=ok[0]}
+async function gvRecalc(){const aid=$('#gvArt').value;if(!aid)return alert('Erst Artikel laden');
+  const amt=Number(String($('#gvAmt').value).replace(',','.'));if(!(amt>0)||Math.abs(Math.round(amt*100)-amt*100)>1e-6)return alert('Bitte einen Betrag > 0 mit max. 2 Nachkommastellen eingeben (CustomPrice 0 oder negativ ignoriert die API und nimmt den Listenpreis).');
+  const it={$type:T('ArticleSale'),Id:guid(),Article:{Id:aid},Quantity:1,CustomerID:cust(),CustomPrice:amt};S._names=S._names||{};S._names[aid]=$('#gvArt').selectedOptions[0].text;
+  S.items=[it];renderCart();const r=await call('General','ReCalculateBasket',{Basket:{$type:T('Basket'),CustomerId:cust(),Items:[it],Price:0}},'#out-gv1');
+  if(r&&r.basket){S.basket=r.basket;S.items=r.basket.items;renderCart();$('#out-gv1').insertAdjacentHTML('afterbegin',`<p class="ok">basket.price = ${r.basket.price} € (customPrice ${r.basket.items[0].customPrice})</p>`)}}
+async function gvValidate(){if(!S.basket)return alert('Erst ReCalculate');if(!S.paymentMethodId)S.paymentMethodId='d560b890-0515-4cb0-a501-f10a28672ea0';const b=withPayment();if(!b)return;
+  const r=await call('General','ValidateBasket',{basket:b},'#out-gv2');if(r&&r.result)$('#out-gv2').insertAdjacentHTML('afterbegin',r.result.isValid?'<p class="ok">✔ gültig – freier Betrag erlaubt</p>':`<p class="bad">✘ ${esc(r.result.message||'')} (${esc(r.result.brokenRuleName||'')})</p>`)}
+
+function renderLocks(){const el=$('#locks');if(!el)return;const l=S.items.map((x,i)=>[i,x.lockTicket||x.LockTicket]).filter(a=>a[1]);
+  el.innerHTML=l.length?'<table><tr><th>Position</th><th>LockTicket</th><th>läuft ab</th><th>Restzeit</th></tr>'+l.map(([i,t])=>`<tr><td>${itemLabel(S.items[i])}</td><td><small>${t.id}</small></td><td>${esc(String(t.expirationTime).slice(0,19))}</td><td class="cd" data-exp="${esc(String(t.expirationTime))}"></td></tr>`).join('')+'</table>':'<small>keine gelockten Positionen</small>';tick()}
+function tick(){document.querySelectorAll('.cd').forEach(e=>{const ms=new Date(e.dataset.exp)-new Date();if(ms>3e11){e.textContent='∞ (3000-12-31 = in Bezahlung)';return}
+  e.textContent=ms<=0?'abgelaufen':`${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')} min`;e.className='cd '+(ms<120000?'bad':'ok')})}
+setInterval(tick,1000);
+async function extendLocks(byTime){const t=S.items.map(x=>x.lockTicket||x.LockTicket).filter(Boolean);if(!t.length)return alert('Keine LockTickets');
+  const r=byTime?await call('General','ExtendLockPeriodByTime',{Seconds:Number($('#extSec').value),LockTickets:t},'#out-ext'):await call('General','ExtendLockPeriod',{LockTickets:t},'#out-ext');
+  const ok=(r&&r.extendedLocks&&r.extendedLocks.succeeded)||[];ok.forEach(n=>S.items.forEach(x=>{const lt=x.lockTicket||x.LockTicket;if(lt&&lt.id==n.id){lt.expirationTime=n.expirationTime}}));renderCart()}
+async function removeItem(i){const x=S.items[i];if(!x)return;if(x.lockTicket||x.LockTicket){const r=await call('General','UnlockBasketItems',{BasketItems:[x]},'#out-qty');if(!(r&&r.unlockBasketItemsResult&&r.unlockBasketItemsResult.isValid))return alert('Unlock fehlgeschlagen')}
+  S.items.splice(i,1);S.basket=null;renderCart();if(S.items.length)await recalc('#out-qty')}
+async function changeQty(i){const x=S.items[i];if(!x)return;
+  if(!(x.lockTicket||x.LockTicket)){const q=prompt('Neue Menge (ganze Zahl ≥ 1; 0 = entfernen)',x.Quantity??x.quantity);if(q===null||q.trim()==='')return;const n=Number(q);if(!Number.isInteger(n)||n<0)return alert('Ungültige Menge: '+q);if(n===0)return removeItem(i);if('Quantity'in x)x.Quantity=n;else x.quantity=n;renderCart();return recalc('#out-qty')}
+  const en=x.entries||x.Entries;const q=prompt('Neue Teilnehmerzahl je Ticketart (kommagetrennt, Reihenfolge wie Entries)',en.map(e=>e.participantCount??e.ParticipantCount).join(','));if(!q)return;const qs=q.split(',').map(v=>Number(v.trim()));if(qs.some(n=>!Number.isInteger(n)||n<0))return alert('Ungültige Anzahl: '+q);if(qs.every(n=>n===0))return removeItem(i);
+  const u=await call('General','UnlockBasketItems',{BasketItems:[x]},'#out-qty');if(!(u&&u.unlockBasketItemsResult&&u.unlockBasketItemsResult.isValid))return alert('Unlock fehlgeschlagen');
+  const n={$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:x.expositionId,ExpositionPeriodId:x.expositionPeriodId,Quantity:1,CustomerId:cust(),Entries:en.map((e,k)=>({$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:e.priceGroupId||e.PriceGroupId,ParticipantCount:qs[k]||0})).filter(e=>e.ParticipantCount>0)};
+  const r=await call('General','LockBasketItems',{BasketItems:[n]},'#out-qty');const lr=r&&r.lockBasketResult;S.items.splice(i,1);if(lr&&lr.isLocked)S.items.splice(i,0,...lr.basketItems);renderCart();await recalc('#out-qty')}
+async function buildMulti(){const X='8ee75bad-c846-f011-a341-c75b35869603';const d=new Date();d.setDate(d.getDate()+1);const D=localDT(d).slice(0,10);
+  const pr=await call('Expositions','FindExpositionPrices',{Criteria:{ExpositionId:X,ExpositionPeriodDate:D+'T00:00:00',IncludeActivePeriods:true}},'#out-multi');
+  const kid=((pr&&pr.expositionPrices)||[]).find(p=>p.group.name=='Kinder');const pe=await call('Expositions','ListExpositionPeriods',{SearchCriteria:{ExpositionId:X,From:D+'T00:00:00',Until:D+'T23:59:59'}},'#out-multi');
+  const per=pe&&pe.expositionPeriods&&pe.expositionPeriods[0];if(!kid||!per)return alert('Keine Preise/Perioden');
+  const lk=await call('General','LockBasketItems',{BasketItems:[{$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:X,ExpositionPeriodId:per.id,Quantity:1,CustomerId:cust(),Entries:[{$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:kid.group.id,ParticipantCount:1}]}]},'#out-multi');
+  if(!(lk&&lk.lockBasketResult&&lk.lockBasketResult.isLocked))return;S._names=Object.assign(S._names||{},{'d89b50c2-3f71-f011-b125-a63f2ac99bc4':'Coca Cola','34ac8db6-eb6d-f011-b125-a63f2ac99bc4':'Gutschein (Druck)'});
+  S.items=[{$type:T('ArticleSale'),Id:guid(),Article:{Id:'d89b50c2-3f71-f011-b125-a63f2ac99bc4'},Quantity:1,CustomerID:cust()},...lk.lockBasketResult.basketItems,{$type:T('ArticleSale'),Id:guid(),Article:{Id:'34ac8db6-eb6d-f011-b125-a63f2ac99bc4'},Quantity:1,CustomerID:cust(),CustomPrice:20}];
+  renderCart();await recalc('#out-multi');if(!S.paymentMethodId)S.paymentMethodId='d560b890-0515-4cb0-a501-f10a28672ea0';const b=withPayment();if(b){const v=await call('General','ValidateBasket',{basket:b},'#out-qty');}}
+async function splitPrep(){const r=await call('General','ListPaymentMethods',{},'#out-split');const o=((r&&r.paymentMethods)||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');$('#sp1').innerHTML=$('#sp2').innerHTML=o;
+  $('#sp1').value='d560b890-0515-4cb0-a501-f10a28672ea0';$('#sp2').value='7f2aef71-1b3e-4cba-9f34-3529edacd7b4';if(S.basket){const h=Math.round(S.basket.price*50)/100;$('#spA1').value=h;$('#spA2').value=Math.round((S.basket.price-h)*100)/100}}
+async function splitValidate(){if(!S.basket)return alert('Erst ReCalculateBasket');const b=JSON.parse(JSON.stringify(S.basket));
+  b.payments=[{$type:T('BasketPayment'),Amount:Number($('#spA1').value),Currency:'EUR',PaymentMethodId:$('#sp1').value},{$type:T('BasketPayment'),Amount:Number($('#spA2').value),Currency:'EUR',PaymentMethodId:$('#sp2').value}];
+  const r=await call('General','ValidateBasket',{basket:b},'#out-split');if(r&&r.result)$('#out-split').insertAdjacentHTML('afterbegin',r.result.isValid?'<p class="ok">✔ gültig – diese payments[] gingen 1:1 in CheckoutBasket</p>':`<p class="bad">✘ ${esc(r.result.message||'')}</p>`)}
+async function loadReasons(){const r=await call('General','FindReasons',{Criteria:{Paging:{PageIndex:0,PageSize:50}}},'#out-rs');$('#csReason').innerHTML='<option value="">(ohne Grund)</option>'+((r&&r.result)||[]).map(x=>`<option value="${x.id}">${esc(x.name||x.code||x.id)}</option>`).join('');
+  const p=await fetchPM();$('#csPm').innerHTML=p.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');$('#csPm').value='d560b890-0515-4cb0-a501-f10a28672ea0'}
+async function fetchPM(){const r=await call('General','ListPaymentMethods',{},'#out-cs');return (r&&r.paymentMethods)||[]}
+async function creditSale(){const id=$('#csSeries').value.trim();if(!id)return alert('SalesSeriesId fehlt');if(!confirm('ECHTE Gutschrift für SalesSeries '+id+' ausführen?'))return;
+  const c={SalesSeriesId:id,ReturnPaymentMethodId:$('#csPm').value};if($('#csReason').value)c.ReasonID=$('#csReason').value;await call('General','CreditSale',{Criteria:c},'#out-cs')}
+async function register(){const r=await call('General','SavePerson',{Person:{Id:EMPTY,Name:{First:$('#rFirst').value,Last:$('#rLast').value},Address:{Street:$('#rStreet').value,Number:$('#rNo').value,Box:$('#rBox').value,ZipCode:$('#rZip').value,Town:$('#rTown').value,Country:$('#rCountry').value},
+  BirthDate:$('#rBirth').value+'T00:00:00',Credential:{Username:$('#rUser').value,Password:$('#rPw').value},Email:$('#rMail').value,Gender:0,IsBlocked:false,Language:ctx().Language,Phone:$('#rPhone').value},
+  Options:{CreateZipcodes:true,IgnoreCredentials:false,IgnoreDuplicates:true,ChangeFamilyMembersAddress:false,SkipAgeValidation:true}},'#out-reg');
+  const id=r&&r.result&&r.result.person&&r.result.person.id;if(id){$('#lUser').value=$('#rUser').value;$('#lPw').value=$('#rPw').value;$('#out-reg').insertAdjacentHTML('afterbegin',`<p class="ok">✔ angelegt: ${id} – Login-Daten oben eingetragen, jetzt „Login“ klicken.</p>`)}}
+async function loadFilters(){const g=await call('Articles','ListArticleGroups',{Criteria:{ArticleTypes:0}},'#out-flt');const c=await call('Articles','FindArticleCategories',{SearchCriteria:{Paging:{PageIndex:0,PageSize:100}}},'#out-flt');const a=await call('Articles','FindAllergens',{Criteria:{}},'#out-flt');
+  const G=(g&&g.groups)||[],C=(c&&c.articleCategories)||[],A=(a&&a.result&&a.result.allergens)||[];
+  $('#filters').innerHTML=`<div class="io"><div><h4>Artikelgruppen (${G.length})</h4>${G.map(x=>`<label><input type="checkbox"> ${esc(x.name)} <small>${esc(x.code||'')}</small></label>`).join('<br>')}<h4>Allergene (${A.length})</h4>${A.map(x=>`<label><input type="checkbox"> ${esc(x.description)}</label>`).join(' ')}</div><div><h4>Kategorien (${C.length})</h4>${C.sort((p,q)=>p.level-q.level).map(x=>`<div style="margin-left:${(x.level-1)*16}px">${esc(x.description)} <small>(${esc(x.shortName||'')})</small></div>`).join('')}</div></div>`}
+const MODS={"Activities":["ActivityOptionGetAvailability","CancelEntry","CheckParticipantsAlreadyRegistered","FindActivities","FindActivitiesAvailablePlaces","FindActivitiesFiscalCertificates","FindActivityTypeSearchTerms","FindCareTypes","FindEntryOverview","FindOrganisationTypes","FindPriceGroupActivityByActivity","GetActivityDayParticipants","GetActivitySubscriptionSettings","GetAvailablePlacesForActivity","GetPriceGroupActivityForPerson","HasValidPersonConsent","ListActivityTypes","SaveEntryNota","SavePersonConsent","UpdateParticipantPresence"],"Articles":["FindAllergens","FindArticleCategories","FindArticles","FindArticleSalesOrders","FindSalesZoneAdditionalSuggestions","FindSalesZoneArticles","GetArticlePriceInformation","ListArticleGroups","ListSalesSeriesOrders","SetSalesZoneItemUnavailability","UpdateSalesSeriesOrders"],"BKO":["AuthenticateChildCareCentreEmployee","CancelChildCareCentreEntry","ChildCareCentreOptionGetAvailability","DeleteChildCareCentreLogbookEntry","DeleteChildCareCentrePresence","FindChildCareBenefits","FindChildCareCentreAbsences","FindChildCareCentreEntries","FindChildCareCentreLogbookEntries","FindChildCareCentrePeriods","FindChildCareCentrePresenceHeaders","FindChildCareCentrePresences","FindChildCareCentres","FindChildCareEntryPeriods","FindChildCareFiscalCertificates","FindChildCareParentStatutes","FindChildCareSchoolHolidays","FindChildCareSchools","GetChildCareCentrePresenceOptions","GetChildCareChipKnip","GetChildCareChipKnips","GetChildCareEntryTariffs","SaveChildCareCentreLogbookEntry","SaveChildCareCentrePresence","SaveChildCareCentrePresenceList","SaveChildCareCentrePresenceOption","SaveChildCareCentrePresenceOptions","SaveChildCareExtraInfoParent","SaveChildCareSchool","UpdateChildCareCentreEntry","ValidateChildCareEntryPriorityRule"],"BusTrips":["CancelBusTrip","CancelBusTripSerie","DeleteBusTrip","DeleteBusTripSerie","GetBusTripRequest","GetBusTripSerieRequest","ListBusTripRequests","ListZipcodes","ListZipcodeStreets","SaveBusTrip","SaveBusTripSerie"],"Counter":["ConfigureDevice","CreateVirtualTable","DeleteTable","GetCashReport","GetCashReportJson","GetCreditSalesByDivisionCard","GetPointOfSaleConfiguration","GetSalesZoneOverview","GetSalesZoneStatus","GetSalesZoneTables","GetTableSalesWithoutTable","GetTicketMessages","GroupTables","LoginCashier","LogoutCashier","MoveTableSalesToTable","SaveCounterSales","SendPOSOrder","SplitTable","StartNewShift","SwitchShiftEmployee","UngroupTables"],"Expositions":["AdjustCombiOrganisedVisit","AdjustOrganisedVisit","CalculateCombiExpositionReservation","CancelOrganisedVisit","ChangeExpositionPeriodCapacity","ChangeExpositionPeriodState","CheckOrganisedVisitAlreadyRegistered","FindCombiExpositions","FindCombiOrganisedVisits","FindExpositionArticlePrices","FindExpositionLanguages","FindExpositionOverviewByDay","FindExpositionPeriodDates","FindExpositionPrices","FindExpositions","FindExpositionSubCategories","FindExpositionTypes","FindOrganisedVisits","GetCombiExpositionAllowedPeriods","GetCombiExpositionExpositionExtraArticles","GetCombiExpositionTicketsOptionalArticles","GetCombiOrganisedVisitRebookingCosts","GetExpositionOptionalArticlesCapacity","GetExpositionSales","GetOrganisedVisitRebookingCosts","ListAudiences","ListExpositionCategories","ListExpositionLocations","ListExpositionPeriods","ListExpositionTypes","SaveExpositionPeriodArticles","SaveOrganisedVisitNames","ValidateExpositionSubscriptionItem"],"Files":["FindFileActivities","FindFileActivityArticles","FindFiles","FindFileTypes","FindSubFiles","ListFileActivityCategories","ListFileActivityPeriods","ListFileAgeGroups"],"Fitness":["CancelFitnessActivityDayReservation","ConfirmFitnessActivityDayReservation","FindFitnessActivities","FindFitnessActivityCategories","FindFitnessActivityReservations","FindSubscriptions","GetFitnessActivity","GetFitnessActivityReservation","GetFitnessNonMemberPerson","ListFitnessLocations"],"General":["ActivateMuseumPassSubscription","AddCreditCardTokenToDigitalWallet","AddDigitalReceiptEmailAddressToSale","AddPaymentToSorteerStraatjesCard","AllowedToDeleteLockTicket","ApplyGenLoyaltyCardDiscount","AssignEmployeeToTasks","AuthenticateContact","AuthenticateEmployee","AuthenticateExternalLoginToken","AuthenticateManager","AuthenticateNationalNumber","AuthenticateNationalNumberWithoutAlreadyExistingCheck","AuthenticateToken","AuthenticateTrader","AuthenticateUser","AuthenticateUserByCard","BlockDivisionCard","BlockPerson","BuyNMBSTicket","BuyUitpasEvent","CancelFashionCheque","CancelGezinsbond","CancelIncertVoucher","ChangeSeasonPlanningStatus","CheckoutBasket","CheckoutPosBasket","CheckoutTemporaryBasket","CouponCalculate","CouponRelease","CouponReserve","CreateCollectLaterLine","CreateExternalMapping","CreatePaymentMethod","CreatePersonAndLinkCards","CreateSeasonPlanning","CreditSale","DeleteAuthenticationToken","DeleteCeviPersons","DeleteEmployeeAvailability","DeleteEmployeeTask","DeleteEmployeeTaskAttachment","DeleteExternalMapping","DeleteJournalLines","DeletePersonDeliveryAddress","DeletePersonRelation","EarnAVSBonusCard","ExtendLockPeriod","ExtendLockPeriodByTime","FinalizeJournal","FindAccessZones","FindClubLocationContractTypes","FindContactRelations","FindCounties","FindCoupons","FindDoctors","FindEmployeeAvailabilities","FindEmployeeNotifications","FindEmployees","FindEmployeeTaskAttachments","FindEmployeeTasks","FindETickets","FindExternalCards","FindGiftCertificates","FindInvoices","FindJournalLines","FindKitchens","FindKitchenZones","FindPerson","FindPersonBase","FindPersonCards","FindPersonContacts","FindPersonDeliveryAddresses","FindPersonGroups","FindPriceGroups","FindQRAppPopups","FindReasons","FindSales","FindSalesShifts","FindSkills","FindStaffMembers","FindTransportArticles","FindVendingMachineArticles","FindVendingMachineBenefits","FindVendingMachineCultureEvents","FindVendingMachineExpositionPeriodDates","FindVendingMachineExpositionPeriodPrices","FindVendingMachineExpositions","FindVendingMachineIncentives","FindVendingMachinePersonSubscriptions","FindVendingMachineSubscriptions","FindVendingMachineSubscriptionsInformation","FindWorkTypes","ForgotPassword","GenerateTwoFASetupCode","GenLoyaltyCardIsValid","GetAddressAttachment","GetAddressAttachmentsInformation","GetAddressAttachmentSubTypes","GetAddressAttachmentTypes","GetAvailableWalletBalance","GetBebarmaticInfo","GetCard","GetCurrentDivision","GetCurrentWsdlVersion","GetDefaultLanguage","GetDefaultPointOfSalesCustomer","GetDigitalWallet","GetDigitalWallets","GetDirectDebitParameters","GetExternalMapping","GetFullCardNumber","GetGezinsbondSettings","GetHeadOfFamilySubscriberId","GetInfoFieldCategories","GetInfoFields","GetIntermediateSalesTicketPrintData","GetIntersolveGiftCardAccessItem","GetIntersolveVouchers","GetJournalsSummary","GetKitchenBarTicketPrintData","GetKitchenMessageTicketPrintData","GetMuseumPass","GetNetpayBalace","GetNetPayChargeUrl","GetNMBSProducts","GetNMBSSettings","GetNMBSStations","GetParameterSetup","GetPersonChipKnip","GetPersonCredits","GetPersonNotifications","GetPointOfSales","GetPosReport","GetProductType","GetReaders","GetReaderSummary","GetResellerCode","GetResellerSettings","GetSalesHeaderAccessTicketsPrintData","GetSalesHeaderAccessTicketsPrintDataJson","GetSalesHeaderReceiptPrintData","GetSalesHeaderReceiptPrintDataForWindowsPrinter","GetSalesHeaderReceiptPrintDataJson","GetSalesQuestions","GetSeasonPlanningSettings","GetShopIDConfiguration","GetStatusFashionCheque","GetStatusGezinsbond","GetStatusIncertVoucher","GetStatusLerarenkaart","GetSubscriptionsInvalidityReasonsFromAddressCard","GetTaskFlowSettings","GetTemporaryDigitalWalletTransactionReceiptForWindowsPrinter","GetTotalSalesByResellerCategory","GetTranslations","GetUitpasData","GetUtcOffset","GetVendingMachineArticlePartsSalesLines","GetVendingMachineCrystalReportsDatasource","GetVendingMachineCrystalReportsDatasources","GetVendingMachineNextTransactionID","GetVendingMachineSettings","GetVendingMachineTickets","GiftCertificateCalculate","GiftCertificateRelease","GiftCertificateReserve","HandleCardByPlugin","HandleChannelEventByPlugin","InterSolveDoPurchase","InterSolveDoPurchaseSimulate","InterSolveIsCardValid","IntersolveVoucherCancelRedeem","IntersolveVoucherRedeem","IsAvailable","IsEmployeePasswordExpired","IsValidVerificationCode","ListAppLicenses","ListBankBICs","ListCategories","ListConsolidationCodes","ListCountries","ListDivisions","ListJournals","ListLanguages","ListLicenseModules","ListLocations","ListLockedBasketItems","ListMobileStockArticles","ListPaymentMethods","ListPersonFunctions","ListPersonTitles","ListSeasonPlannings","ListStockArticleGroups","ListVendingMachineArticles","ListWarehouses","ListZipcodeCendrisStreets","ListZipcodes","ListZipcodeStreets","LoadApplicationConfigurations","LoadApplications","LoadGuiConfiguration","LockBasketItems","LockPosBasketItems","Log","MarkETicketAsDelivered","MarkPersonNotificationRead","PayBebarmatic","PointOfSaleResetZeroLines","ReCalculateBasket","RecalculatePosBasket","RedeemFashionCheque","RedeemGezinsbond","RedeemIncertVoucher","RedeemVoucher","RegisterOverstayCharges","ReLockBasketItems","RequestAuthenticationToken","ResetLockPeriod","ResetPersonPassword","ResetTwoFAUniqueKey","RewardGezinsbond","SalesZoneTableResetZeroLines","SaveAddressAttachment","SaveApplication","SaveApplicationConfiguration","SaveCeviPersons","SaveCRMLog","SaveEmployee","SaveEmployeeAvailabilities","SaveEmployeeAvailability","SaveEmployeePassword","SaveEmployeeTask","SaveEmployeeTaskAttachment","SaveEmployeeTaskStatus","SaveGroupClubLocations","SaveGuiConfiguration","SaveJournal","SaveJournalLines","SavePerson","SavePersonContact","SavePersonContacts","SavePersonDeliveryAddress","SavePersonExternalMasterId","SavePersonPriceGroups","SavePersonRelation","SavePersonSubcategories","SaveWiseCommunicationLog","SearchUitpasTariff","SetCouponPrinted","SetGiftCertificatePrinted","SetLockStateForDigitalWalletPayout","SetSaleEnvisoPayByLink","SetSaleRefundStatus","SetVendingMachineIncentivesTicketPrinted","SetVendingMachineTicketsPrinted","SupportsChipKnipPayments","SupportsIncassoPayments","SupportsPayLaterPayments","UnapplyGenLoyaltyCardDiscount","UniflowChargeUserWithRef","UniflowEnsureUserExistsCardReg","UniflowGetExtRefIdAndAmountPayed","UniflowMakeDepositWithRef","UnlockBasketItems","UnRedeemVoucher","UnsubscribeEmail","UpdateCollectLaterLine","ValidateAVSBonusCard","ValidateBasket","ValidateBasketItem","ValidateCard","ValidateNationalRegisterNumber","ValidatePosBasket","ValidateSeasonPlanning","ValidateSorteerStraatjesCard","ValidateSoulIt","ValidateSoulItByPersonInfo","ValidateTwoFA","ValidateUserName","ValidateVoucher","VendingMachineCarrierSwitch","VoucherValidate","WiseGetFeesForPatron","WiseGetPatronName","WiseSetFeePayedForPatron"],"LessonsChildren":["CatchUpLessonGroupDay","ConfirmWaitingListCall","DeleteWaitingListStudent","FindCatchUpLessonGroupDayManipulations","FindLessonGroupOptions","FindLessonGroupsForCatchUp","FindLessonsChildrenFiscalCertificates","FindPersonLlvCurrentLessonGroups","FindPersonLlvTransferHistories","FindUnsubscribeLessonGroupDayManipulations","FindWaitingListStudentOverview","GetLlvCreditInfo","GetLLVInfo","GetPersonLLVInfoByLessonGroup","ListLessonGroupPresences","ListLessonGroups","ListNorms","ListStudentFollowScores","ListStudentFollowScoresAll","ListStudentPresences","ListSwimmingDiplomas","ListSwimmingLevels","ListWaitingListCalls","ListWaitingLists","SavePreferredLessonGroups","UnsubscribeLessonGroupDay","ValidateWaitingListCall","ValidNumberOfOptionsForStudent"],"LessonsTeachers":["DeleteWaitingListStudent","FindCatchUpLessonGroupDayManipulations","FindLessonGroupComments","FindLessonGroupOptions","FindUnsubscribeLessonGroupDayManipulations","FindWaitingListStudentOverview","GetLLVInfo","GetPersonLLVInfoByLessonGroup","ListLessonGroupPresences","ListLessonGroups","ListNorms","ListStudentFollowScores","ListStudentFollowScoresAll","ListStudentPresences","ListSwimmingDiplomas","ListSwimmingLevels","ListWaitingLists","LLVMessageTranslations","SaveLessonGroup","SaveLessonGroupComment","SaveLLVDiplomaDate","SaveLLVInfoToDB","SaveStudentTransfer","SaveStudentTransfers","ValidNumberOfOptionsForStudent"],"LocalCounter":["LocalCounterGetParameters","LocalCounterSynchronize"],"ManagerApp":["ListSalesInformation","ListVisitingCustomersInformation"],"Purchase":["DeletePurchaseLine","DeletePurchaseOrder","FindArticleCategories","FindPurchaseArticles","FindPurchaseOrders","FindStockLocations","FindVendorGroups","FindVendors","ListArticleGroups","SavePurchaseLine","SavePurchaseOrder","ValidatePurchaseLine","ValidatePurchaseOrder"],"Rental":["CancelRentalOrder","FindArticleCategories","FindRentalActivities","FindRentalArticleAvailablePeriods","FindRentalArticles","FindRentalOrders","FindRentalPlaces","GetRentalOrder","GetRentalOrdersByDate","GetRentalPlaceOpeningHour","GetRentalPricing","ListArticleGroups"],"Reservations":["CalculateReservationCancelCost","CancelReservations","ConfirmReservations","DeleteReservationAttachment","FindAvailablePlacesForReservationActivities","FindInfrastructureOpenings","FindPriceGroupReservationActivityByActivity","FindReservationAttachments","FindReservations","FindReservationsOverviewByDay","FindSubsidyInfos","GetRecurringDayPatternDates","ListInfrastructures","ListPlaces","ListReservationActivities","ListReservationViews","ProcessRefund","SaveReservationAttachment","UpdatePlaceReservation"],"Scenarios":["DeleteScenarioSession","DeleteScenarioSessionAttachment","DeleteScenarioSessionComment","FindScenarios","FindScenarioSessionAttachments","FindScenarioSessions","FindScenarioTypes","GetScenarioQuestionInputValueFileDetails","GetScenarioQuestionInputValueFileGeneral","GetScenarioSessionEmailMessage","GetScenarioSessionEmailMessages","GetSpotbookingSettings","ListCdbCategories","SaveScenarioSession","SaveScenarioSessionAttachment","SaveScenarioSessionComment","SaveSpotbookingStatus","ValidateScenarioSessionCheck"],"Subscriptions":["AddPersonCardSubscription","CancelCollectionContract","CancelSubscription","ChangeSubscriptionActiveState","DevaluateSubscription","DisconnectDivisionCard","FindFamilyMembersForFamilySubscriptionAdjustment","FindInfoPlayLogs","FindPersonSubscriptionData","FindSubscriptionArticles","FindSubscriptionConversionArticles","FindSubscriptionLogs","FindSubscriptions","GetArticlePriceInformation","GetDirectDebitSummary","GetFamilyCards","GetInfoPlayCustomData","GetInfoPlayCustomFields","GetSubscriptionArticleFamilyMembers","ModifySubscriptionDates","RegisterSubscriptionRefusationLog","RemovePersonCardSubscription","UndoCancelSubscription"],"Ticketing":["CreateCultureEvent","FindCultureEvents","FindCultureReservations","FindCultureSeries","FindCultureWaitingListReservations","GetCultureEventSeating","GetCultureEventSeatingWithIncludes","GetCultureSeriesSeating","GetCultureSeriesSeatingWithIncludes","GetHallAllocations","GetHallSeating","GetHallSeatingWithIncludes","GetSeatAllocations","GetSiteAllocations","ListCultureActivities","ListCultureEventCategories","ListCultureEventTickets","ListCultureSubscriptions","ListHalls","UpdateCultureEvent"]};
+function exportReq(id,kind){const e=S._exp[id];const b=JSON.parse(JSON.stringify(e.body));b.Context.Password='{{PASSWORD}}';
+  let txt;if(kind=='curl')txt=`curl -X POST '${e.url}' \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(b).replace(/'/g,"'\\''")}'`;
+  else txt=JSON.stringify({info:{name:'API Demo '+e.url.split('/json/')[1],schema:'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'},variable:[{key:'PASSWORD',value:''}],item:[{name:e.url.split('/json/')[1],request:{method:'POST',header:[{key:'Content-Type',value:'application/json'}],url:e.url,body:{mode:'raw',raw:JSON.stringify(b,null,2),options:{raw:{language:'json'}}}}}]},null,2);
+  const w=document.createElement('div');w.innerHTML=`<div class="warn">Export (${kind}) – Passwort als Platzhalter <code>{{PASSWORD}}</code> (Postman: Collection-Variable PASSWORD setzen).</div><textarea style="width:100%;height:160px;font:11px monospace"></textarea>`;w.querySelector('textarea').value=txt;
+  const host=[...document.querySelectorAll('button')].find(x=>x.getAttribute('onclick')==`exportReq('${id}','${kind}')`);host.closest('.io').parentElement.appendChild(w);
+  if(navigator.clipboard)navigator.clipboard.writeText(txt).catch(()=>{})}
+const FLOW=[['FindArticles / Expositions / Abos',40,20,'t-art','#cfe8d4'],['Login: AuthenticateUser',40,100,'t-cust','#ddd'],['LockBasketItems (Kapazität)',40,180,'t-expo','#d4e4f7'],['ExtendLockPeriod(ByTime)',40,260,'t-pro','#ddd'],['Kunde: SavePerson / Kundenpreise',40,340,'t-price','#ddd'],
+ ['ReCalculateBasket',370,20,'t-art','#cfe8d4'],['ListPaymentMethods',370,100,'t-art','#cfe8d4'],['ValidateBasket',370,180,'t-art','#cfe8d4'],['Teilzahlung: payments[]',370,260,'t-pro','#ddd'],['PSP-Zahlung (extern)',370,340,'t-err','#fff4e5'],
+ ['CheckoutBasket',700,20,'t-art','#cfe8d4'],['E-Ticket-URL (PDF)',700,100,'t-art','#cfe8d4'],['FindETickets / Historie',700,180,'t-acc','#ddd'],['CreditSale (Storno)',700,260,'t-storno','#ddd'],['Fehler → Recovery',700,340,'t-err','#fff4e5']];
+const EDGES=[[0,1],[1,2],[2,3],[0,5],[2,5],[4,5],[5,6],[6,7],[7,8],[8,9],[7,9],[9,10],[10,11],[11,12],[10,13],[9,14],[14,2]];
+function drawFlow(){const g=$('#flowG');if(!g)return;const W=250,H=50;let h='';
+  EDGES.forEach(([a,b])=>{const A=FLOW[a],B=FLOW[b];let x1=A[1]+W,y1=A[2]+H/2,x2=B[1],y2=B[2]+H/2;if(B[1]==A[1]){x1=A[1]+W/2;y1=A[2]+H;x2=B[1]+W/2;y2=B[2]}if(B[1]<A[1]){x1=A[1];x2=B[1]+W}
+    h+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>`});
+  FLOW.forEach((f,i)=>{h+=`<g style="cursor:pointer" onclick="document.querySelector('nav button[data-t=${f[3]}]').click()"><rect x="${f[1]}" y="${f[2]}" width="${W}" height="${H}" rx="8" fill="${f[4]}" stroke="#003b5c"/><text x="${f[1]+W/2}" y="${f[2]+30}" text-anchor="middle">${f[0]}</text></g>`});
+  h+='<text x="40" y="440" font-weight="bold">Legende:</text><rect x="120" y="425" width="20" height="20" fill="#cfe8d4"/><text x="146" y="440">Pflicht</text><rect x="220" y="425" width="20" height="20" fill="#d4e4f7"/><text x="246" y="440">bei Kapazitätsprodukten</text><rect x="430" y="425" width="20" height="20" fill="#ddd"/><text x="456" y="440">optional</text><rect x="540" y="425" width="20" height="20" fill="#fff4e5"/><text x="566" y="440">außerhalb/Fehlerpfad</text>';
+  h+='<text x="40" y="480">Datum/Zeit immer lokal ohne „Z“ · SessionId = neue GUID pro Warenkorb/Kauf · Preise nur aus ReCalculateBasket</text>';g.innerHTML=h}
+drawFlow();
+async function history1(){if(!S.customerId)return alert('Erst einloggen');const r=await call('Articles','FindArticleSalesOrders',{SearchCriteria:{PersonId:S.customerId,From:$('#hFrom').value+'T00:00:00',Until:$('#hUntil').value+'T23:59:59',Type:0,Paging:{PageIndex:0,PageSize:100}}},'#out-h1');
+  const l=(r&&r.articleSalesOrders)||[];$('#histTbl').innerHTML='<table><tr><th>Datum</th><th>Verkaufsnr.</th><th>Artikel</th><th>Betrag</th></tr>'+l.map(x=>`<tr><td>${esc(String(x.date).replace('T',' '))}</td><td>${x.number}</td><td>${esc(x.articleName||x.description||'')}</td><td>${x.price??x.amount??x.totalPrice??''}</td></tr>`).join('')+'</table>'}
+async function etickets(){if(!S.customerId)return alert('Erst einloggen');const f=new Date();f.setDate(f.getDate()-30);const u=new Date();u.setDate(u.getDate()+365);
+  const r=await call('General','FindETickets',{Criteria:{PersonId:S.customerId,From:localDT(f),Until:localDT(u,'23:59:59'),Paging:{PageIndex:0,PageSize:50},Includes:{IncludeImage:false}}},'#out-h3');
+  const l=(r&&r.eTickets)||[];$('#etTbl').innerHTML='<table><tr><th>Ticket-Nr.</th><th>Ausstellung</th><th>Typ</th><th>erstellt</th></tr>'+l.map(x=>`<tr><td>${esc(x.ticketNo)}</td><td>${esc(x.expositionName||'')}</td><td>${esc(x.ticketDescription||'')}</td><td>${esc(String(x.creationDate).slice(0,16))}</td></tr>`).join('')+'</table>'}
+async function errSum(){const r=await call('General','ReCalculateBasket',{Basket:{$type:T('Basket'),CustomerId:cust(),Items:[{$type:T('ArticleSale'),Id:guid(),Article:{Id:'34ac8db6-eb6d-f011-b125-a63f2ac99bc4'},Quantity:1,CustomerID:cust()}],Price:0}},'#out-err');
+  const b=r.basket;b.payments=[{$type:T('BasketPayment'),Amount:b.price+1,Currency:'EUR',PaymentMethodId:'d560b890-0515-4cb0-a501-f10a28672ea0'}];await call('General','ValidateBasket',{basket:b},'#out-err')}
+async function errNoPay(){const r=await call('General','ReCalculateBasket',{Basket:{$type:T('Basket'),CustomerId:cust(),Items:[{$type:T('ArticleSale'),Id:guid(),Article:{Id:'34ac8db6-eb6d-f011-b125-a63f2ac99bc4'},Quantity:1,CustomerID:cust()}],Price:0}},'#out-err');
+  const b=r.basket;b.payments=[];await call('General','ValidateBasket',{basket:b},'#out-err')}
+async function expoBase(){const X='8ee75bad-c846-f011-a341-c75b35869603';const d=new Date();d.setDate(d.getDate()+1);const D=localDT(d).slice(0,10);
+  const pr=await call('Expositions','FindExpositionPrices',{Criteria:{ExpositionId:X,ExpositionPeriodDate:D+'T00:00:00',IncludeActivePeriods:true}},'#out-err');const pe=await call('Expositions','ListExpositionPeriods',{SearchCriteria:{ExpositionId:X,From:D+'T00:00:00',Until:D+'T23:59:59'}},'#out-err');
+  return {X,g:pr.expositionPrices[0].group.id,per:pe.expositionPeriods[0].id}}
+async function errDup(){const e=await expoBase();const en=()=>({$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:e.g,ParticipantCount:1});
+  await call('General','LockBasketItems',{BasketItems:[{$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:e.X,ExpositionPeriodId:e.per,Quantity:1,Entries:[en(),en()]}]},'#out-err')}
+async function errFakeLock(){const e=await expoBase();const l=await call('General','LockBasketItems',{BasketItems:[{$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:e.X,ExpositionPeriodId:e.per,Quantity:1,Entries:[{$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:e.g,ParticipantCount:1}]}]},'#out-err');
+  const items=l.lockBasketResult.basketItems;const fake=JSON.parse(JSON.stringify(items));fake[0].lockTicket.id=guid();
+  await call('General','ReCalculateBasket',{Basket:{$type:T('Basket'),CustomerId:cust(),Items:fake,Price:0}},'#out-err');await call('General','UnlockBasketItems',{BasketItems:items},'#out-err');
+  $('#out-err').insertAdjacentHTML('afterbegin','<p>Echter Lock wurde danach wieder freigegeben. Angezeigt: letzter Call (Unlock). Die ReCalculate-Antwort mit erfundenem Ticket: „Die Ausstellungsreservierung muss gesperrt sein“.</p>')}
+async function recovery(){const t=S.items.map(x=>x.lockTicket||x.LockTicket).filter(Boolean);let fail=[];
+  if(t.length){const r=await call('General','ExtendLockPeriod',{LockTickets:t},'#out-rec');fail=(r&&r.extendedLocks&&r.extendedLocks.failed)||[]}
+  if(fail.length){$('#out-rec').insertAdjacentHTML('afterbegin',`<p class="bad">${fail.length} Lock(s) abgelaufen → Positionen im Tab Ausstellungen neu locken, dann ReCalculate/Validate.</p>`);return}
+  await recalc('#out-rec');if(!S.paymentMethodId)S.paymentMethodId='d560b890-0515-4cb0-a501-f10a28672ea0';const b=withPayment();if(b){const v=await call('General','ValidateBasket',{basket:b},'#out-rec');$('#out-rec').insertAdjacentHTML('afterbegin',v&&v.result&&v.result.isValid?'<p class="ok">✔ Locks gültig, Basket neu berechnet und validiert – Zahlung kann erneut gestartet werden.</p>':'<p class="bad">Validate ✘ – siehe Response</p>')}}
+function setLang(l){$('#lang').value=l;$('#langNow').textContent=l}
+async function langDemo(){$('#langNow').textContent=ctx().Language;const a=await call('Articles','FindAllergens',{Criteria:{}},'#out-lang');const l=(a&&a.result&&a.result.allergens)||[];
+  $('#langTbl').innerHTML=`<table><tr><th>description (Sprache ${ctx().Language})</th><th>translations[]</th></tr>`+l.slice(0,8).map(x=>`<tr><td>${esc(x.description)}</td><td>${(x.translations||[]).map(t=>esc((t.languageCode||t.language||'')+': '+t.description)).join(' · ')}</td></tr>`).join('')+'</table>'}
+function rawFill(){const m=$('#rawMod').value;$('#rawMeth').innerHTML=MODS[m].map(x=>`<option>${x}</option>`).join('');rawDoc()}
+function rawDoc(){$('#rawDoc').href=($('#docBase').value||'')+'/json/documentation/'+$('#rawMeth').value}
+async function rawSend(){let b;try{b=JSON.parse($('#rawBody').value||'{}')}catch(e){return alert('Ungültiges JSON: '+e.message)}delete b.Context;await call($('#rawMod').value,$('#rawMeth').value,b,'#out-raw')}
+setTimeout(()=>{if($('#rawMod')){$('#rawMod').innerHTML=Object.keys(MODS).map(m=>`<option>${m}</option>`).join('');$('#rawMod').value='Articles';rawFill();$('#rawMeth').value='FindArticles';$('#rawMeth').onchange=rawDoc;rawDoc()}
+  dateInput('#hFrom',-30);dateInput('#hUntil',0);$('#langNow').textContent=ctx().Language},0);
+const BUSY={};['login','findArticles','recalc','validate','checkout','listPM','lockItems','unlockItems','relock','rcAfterRelock','rebookViaUnlock','savePerson','authUser','register','creditSale','buildMulti','changeQty','removeItem','extendLocks','splitValidate','gvRecalc','gvValidate','compare','recovery','errDup','errFakeLock'].forEach(n=>{const f=window[n];if(typeof f!=='function')return;
+  window[n]=async function(...a){if(BUSY[n]){console.warn('ignoriert (läuft noch):',n);return}BUSY[n]=1;document.body.style.cursor='progress';try{return await f.apply(this,a)}finally{BUSY[n]=0;document.body.style.cursor=''}}});
+function showState(){$('#state').textContent=JSON.stringify({context:Object.assign(ctx(),{Password:'••••••'}),login:{customerId:S.customerId||EMPTY,name:S.customerName||'anonym',priceGroups:S.priceGroups||'(noch nicht abgefragt)'},...S},null,2)}
+</script></body></html>
