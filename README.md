@@ -52,3 +52,6 @@ Behoben: Kundenwechsel (Login, Logout, Gast) verwirft den berechneten Warenkorb.
 
 ## Retest 2 (16.10.2026, 19:50)
 Behoben: 30-s-Timeout für alle Calls (vorher blieb der Doppelklick-Schutz bei hängendem Request für immer gesperrt), roter Hinweis bei Netzwerkfehler/Timeout, Prüfung abgelaufener LockTickets vor Validate/Checkout, Dokument-Links für OrganisedVisitRebooking, ChildCare, DigitalWalletCharge und WaitingList, kein „undefined“ mehr in ReservationProof-URLs bei fehlender ID.
+
+## Testschleife (16.10.2026, 20:00–20:20)
+In 5 Runden behoben: Dokument-Links bei salesItems = null / Nicht-Objekt, Export nach Neuladen, neue SessionId verwirft den Basket, Pflichtfeld-Prüfung bei Login/Registrierung/SavePerson/FindPerson/AuthenticateUser, Mengen und Beträge nur noch als Ziffern (kein 1e2/0x10, max. 9999), fehlgeschlagenes ReCalculate verwirft den alten Basket, Lock-Antwort übernimmt den aktuellen Kunden. Zusätzlich 4 neue `$type`s in der Tabelle von Schritt 6.
