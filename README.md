@@ -37,3 +37,12 @@ Jeder Request lässt sich als curl oder Postman exportieren, das Passwort steht 
 - Korrektur: Ein Kauf ohne Konto geht doch, die frühere Aussage „anonym nicht möglich“ war falsch. Als CustomerId dient die ID des Web-Systemkunden (Feld „Gast-Kunden-ID“). Die Käuferdaten kommen in `basket.anonymousPerson` (Typ `Anonymous`: Name, FirstName, Street1, Street2, Number, Box, ZipCode, Home, Country, Email, Telephone, Newsletter).
 - In der Oberfläche: Schalter „als Gast kaufen“ im Checkout und ein Formular für die Käuferdaten (Name und E-Mail sind Pflicht).
 - Nur mit Kundenkonto (Badge, im Gastmodus gesperrt): Abos und Mehrfachkarten (`isSubscriptionItem`, alle Artikel aus FindSubscriptionArticles), Wallet-Artikel (`isDigitalWalletItem`) und Aktivitäten (`ActivityReservation`). Die API lehnt sie im Gastmodus nicht ab, darum sperrt der Shop sie.
+
+## Dokument-URLs nach dem Checkout (16.10.2026)
+Welcher Endpunkt von `WebShopDocumentService.svc` passt, ergibt sich aus `salesItems[].$type` und den Feldern der Position. Ein Feld „documentType“ gibt es nicht. Schritt 6 baut die Links automatisch und zeigt die Zuordnungstabelle.
+- ExpositionSalesItem: `ETickets/…/{id}/`, `ETicketByOrganisedVisit/…/{organisedVisitId}/`, `OrganisedVisits/…/{organisedVisitId}`
+- ArticleSalesItem: mit `barcodes`/`isMembership` → `ETickets/…/{id}/`, sonst `Coupons/…/{id}` bzw. `GiftCertificates/…/{id}`; mit `directDebitProcessing` → `DirectDebitContractSetUp`/`DirectDebitContractPayment`
+- ActivityReservationSalesItem: `ActivityOrder/{orderId}`, `ActivitySubscriptions/{id}`, `ETicketByActivityEntry/{entryId}/`. Weitere Typen (Kultur, Fitness, Verleih, Platzreservierung, Abo-Verlängerung, Dossier) laut `/help`.
+- Ergebnis des Checkouts: `DigitalReceipt/{ShopId}/{salesSeriesId}/` (Kassenbeleg) und `Invoice/…/{invoiceId}`
+- Real als PDF bestätigt: ETickets (Ausstellung, 10er Karte), ETicketByOrganisedVisit, OrganisedVisits (Vorlage ohne Daten), Coupons (Gutschein (Druck)), DigitalReceipt. 0 Byte (keine Vorlage): GiftCertificates, DirectDebit.
+- Slash am Ende nur bei ETickets, ETicketBy… und DigitalReceipt (sonst 307). Bei den übrigen führt der Slash zu 404.

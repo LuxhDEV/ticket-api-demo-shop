@@ -77,12 +77,31 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="row"><label><input type="checkbox" id="guestMode" onchange="guestToggle()"/> als Gast kaufen</label> <span id="guestState"></span></div>
 <div class="row" id="guestForm" style="display:none">Vorname <input id="gFirst" placeholder="Vorname"/> Name* <input id="gName" placeholder="Nachname"/> E-Mail* <input id="gMail" placeholder="name@example.com"/> Straße <input id="gStreet"/> Nr. <input id="gNo" style="width:50px"/> PLZ <input id="gZip" style="width:70px"/> Ort <input id="gTown"/> Land <input id="gCountry" style="width:50px" placeholder="DE"/> Tel. <input id="gTel"/> <label><input type="checkbox" id="gNews"/> Newsletter</label></div>
 <button class="go danger" onclick="checkout()">CheckoutBasket ausführen (echter Kauf)</button>
-<div class="flow"><b>Weiter:</b> Eine beliebige <code>salesItems[].id</code> genügt für die E-Ticket-URL.</div>
+<div class="flow"><b>Weiter:</b> Für jede <code>salesItems[]</code>-Position wählt Schritt 6 anhand von <code>$type</code> und den Feldern (<code>organisedVisitId</code>, <code>orderId</code>, <code>barcodes</code>, <code>isMembership</code>, <code>directDebitProcessing</code> …) die passende Dokument-URL. Dazu kommen aus dem Ergebnis <code>salesSeriesId</code> (Beleg) und <code>invoiceId</code> (Rechnung).</div>
 <div id="out-co"></div></div>
-<div class="step"><h3><span>6</span>E-Ticket (PDF) anzeigen</h3>
-<div class="when"><b>Wann:</b> Nach erfolgreichem Checkout (Bestätigungsseite / E-Mail). Kein JSON-Call, sondern ein REST-GET auf den Dokumentendienst: <code>https://{webserviceurl}/WebShopDocumentService.svc/ETickets/{ShopId}/{Sprache}/{SalesItemId}/</code> (abschließender Slash nötig, sonst Fehler). Für Aktivitäten stattdessen <code>…/ActivitySubscriptions/{ShopId}/{Sprache}/{SubscriptionId}</code>.</div>
+<div class="step"><h3><span>6</span>Dokumente (PDF) – <code>WebShopDocumentService.svc</code></h3>
+<div class="when"><b>Wann:</b> Nach erfolgreichem Checkout (Bestätigungsseite / E-Mail). Das ist kein JSON-Call, sondern ein REST-GET: <code>{webserviceurl}/WebShopDocumentService.svc/{Endpunkt}/{ShopId}/{Sprache}/{ID}</code>. Ein Feld „documentType“ gibt es in der Response nicht. <b>Welcher Endpunkt passt, ergibt sich aus dem <code>$type</code> der SalesItems</b> (und bei Artikeln aus <code>barcodes</code>/<code>isMembership</code>/<code>directDebitProcessing</code>). Ob wirklich ein PDF kommt, hängt davon ab, ob im Backoffice eine Druckvorlage hinterlegt ist. Ohne Vorlage gibt es HTTP 200 mit 0 Byte. <b>Abschließender Slash:</b> Nur Endpunkte mit optionalen Segmenten (<code>ETickets</code>, <code>ETicketBy…</code>, <code>DigitalReceipt</code>) brauchen ihn, sonst kommt HTTP 307. Bei den anderen führt der Slash zu 404. Die vollständige Liste liefert <code>WebShopDocumentService.svc/help</code>.</div>
+<table class="docmap"><tr><th>Positionstyp (<code>$type</code>)</th><th>Feld</th><th>Endpunkt / URL</th><th>Real geprüft</th></tr>
+<tr><td>ExpositionSalesItem</td><td><code>id</code> (SalesLineID)</td><td><code>ETickets/{S}/{L}/{id}/</code></td><td>✔ PDF (154 KB)</td></tr>
+<tr><td>ExpositionSalesItem</td><td><code>organisedVisitId</code></td><td><code>ETicketByOrganisedVisit/{S}/{L}/{organisedVisitId}/</code></td><td>✔ PDF (154 KB)</td></tr>
+<tr><td>ExpositionSalesItem</td><td><code>organisedVisitId</code></td><td><code>OrganisedVisits/{S}/{L}/{organisedVisitId}</code> (Besuchsbestätigung)</td><td>✔ PDF, aber Vorlage ohne Daten (Platzhalter)</td></tr>
+<tr><td>ArticleSalesItem mit <code>barcodes</code> / <code>isMembership</code> (Abo, Karte)</td><td><code>id</code></td><td><code>ETickets/{S}/{L}/{id}/</code></td><td>✔ PDF (10er Karte)</td></tr>
+<tr><td>ArticleSalesItem (Gutschein/Coupon)</td><td><code>id</code></td><td><code>Coupons/{S}/{L}/{id}</code></td><td>✔ PDF mit Gutscheincodes (Gutschein (Druck))</td></tr>
+<tr><td>ArticleSalesItem (Wertgutschein)</td><td><code>id</code></td><td><code>GiftCertificates/{S}/{L}/{id}</code></td><td>200, 0 Byte (keine Vorlage)</td></tr>
+<tr><td>ArticleSalesItem mit <code>directDebitProcessing</code></td><td><code>id</code></td><td><code>DirectDebitContractSetUp</code> / <code>DirectDebitContractPayment/{S}/{L}/{id}</code></td><td>200, 0 Byte (kein Lastschrift-Artikel)</td></tr>
+<tr><td>ActivityReservationSalesItem</td><td><code>orderId</code> / <code>id</code> / <code>entryId</code></td><td><code>ActivityOrder/…/{orderId}</code>, <code>ActivitySubscriptions/…/{id}</code>, <code>ETicketByActivityEntry/…/{entryId}/</code></td><td>nur Doku (keine Aktivität verkauft)</td></tr>
+<tr><td>CultureEventReservationSalesItem</td><td><code>cultureEventReservationId</code></td><td><code>CultureEvents/{S}/{L}/{cultureEventReservationId}</code></td><td>nur Doku</td></tr>
+<tr><td>FitnessActivityDayReservationSalesItem</td><td><code>fitnessActivityDayReservationId</code></td><td><code>Fitness/{S}/{L}/{…}</code></td><td>nur Doku</td></tr>
+<tr><td>RentalReservationSalesItem</td><td><code>rentalReservationId</code></td><td><code>Rental/{S}/{L}/{RentalHeaderID}</code> (Zuordnung laut Doku unklar)</td><td>nur Doku</td></tr>
+<tr><td>PlaceReservationSalesItem / RecurringPlaceReservationSalesItem</td><td><code>id</code> + <code>reservationId</code> bzw. <code>serieId</code></td><td><code>ReservationProof/{S}/{L}/{id}/{reservationId}/{serieId}</code> (fehlende ID als Empty-GUID)</td><td>nur Doku</td></tr>
+<tr><td>SubscriptionProlongationSalesItem</td><td><code>subscriptionId</code></td><td><code>Subscriptions/…/{subscriptionId}</code>, <code>ETicketBySubscription/…/{subscriptionId}/</code></td><td>nur Doku</td></tr>
+<tr><td>FileSalesItem</td><td><code>fileActivityId</code></td><td><code>Files/{S}/{L}/{FileId}</code> (Zuordnung unklar)</td><td>nur Doku</td></tr>
+<tr><td>Checkout-Ergebnis</td><td><code>salesSeriesId</code></td><td><code>DigitalReceipt/{S}/{salesSeriesId}/</code> (ohne Sprache, Kassenbeleg)</td><td>✔ PDF (81 KB)</td></tr>
+<tr><td>Checkout-Ergebnis</td><td><code>invoiceId</code> (nur bei Rechnung)</td><td><code>Invoice/{S}/{L}/{invoiceId}</code></td><td>nur Doku (invoiceId war bisher immer null)</td></tr>
+</table>
+<div class="warn"><b>Real beobachtet:</b> <code>ETickets</code> und <code>Coupons</code> liefern die Dokumente der <b>ganzen Verkaufsserie</b>, nicht nur der einen Zeile. Mehrere Käufe in derselben SessionId landen deshalb im selben PDF. Darum pro Kauf eine neue SessionId verwenden.</div>
 <div class="row">webserviceurl <input id="docBase" style="width:260px" value="" placeholder="https://api.example.com"/> SalesItemId <input id="salesItemId" placeholder="aus Checkout-Response" style="width:300px"/></div>
-<button class="go" onclick="eticket()">E-Ticket-URL bauen</button>
+<button class="go" onclick="eticket()">E-Ticket-URL bauen (nur SalesItemId)</button> <button class="go" onclick="docsFromCheckout()">Dokument-URLs aus letzter Checkout-Response</button><br/><textarea id="coJson" rows="3" style="width:100%" placeholder="… oder eine CheckoutBasket-Response (JSON) hier einfügen"></textarea>
 <div id="out-et"></div></div>
 </div>
 <!-- ================= KUNDEN ================= -->
@@ -389,7 +408,27 @@ async function checkout(){const b=withPayment();if(!b)return;
   const body={basket:b};const oid=$('#orderId').value.trim();if(oid)body.orderId=oid;
   const r=await call('General','CheckoutBasket',body,'#out-co');
   const res=r&&(r.result||r);const si=res&&res.salesItems;
-  if(si&&si.length){S.salesItems=si;S.lastSale={salesSeriesId:res.salesSeriesId,salesOrderNumber:res.salesOrderNumber};$('#salesItemId').value=si[0].id;if($('#csSeries'))$('#csSeries').value=res.salesSeriesId||'';setTimeout(eticket,0);$('#out-co').insertAdjacentHTML('afterbegin',`<p class="ok">✔ resultState=${res.resultState} – SalesItemId in Schritt 6 übernommen</p>`)}}
+  if(si&&si.length){S.salesItems=si;S.lastRes=res;S.lastSale={salesSeriesId:res.salesSeriesId,salesOrderNumber:res.salesOrderNumber};$('#salesItemId').value=si[0].id;if($('#csSeries'))$('#csSeries').value=res.salesSeriesId||'';setTimeout(docsFromCheckout,0);$('#out-co').insertAdjacentHTML('afterbegin',`<p class="ok">✔ resultState=${res.resultState} – SalesItemId in Schritt 6 übernommen</p>`)}}
+function docsFor(res){const base=$('#docBase').value.replace(/\/$/,'')+'/WebShopDocumentService.svc/',S_=ctx().ShopId,L_=ctx().Language,u=(ep,id,sl)=>`${base}${ep}/${S_}/${L_}/${id}${sl?'/':''}`,out=[];
+  (res.salesItems||[]).forEach(x=>{const t=(x.$type||'').split(',')[0].split('.').pop(),n=x.name||t,a=(lab,url,f)=>out.push({pos:n,typ:t,feld:f,lab,url});
+   if(t=='ExpositionSalesItem'){a('E-Ticket',u('ETickets',x.id,1),'id');if(x.organisedVisitId){a('E-Ticket je Besuch',u('ETicketByOrganisedVisit',x.organisedVisitId,1),'organisedVisitId');a('Besuchsbestätigung',u('OrganisedVisits',x.organisedVisitId),'organisedVisitId')}}
+   else if(t=='ArticleSalesItem'){if((x.barcodes||[]).length||x.isMembership)a('E-Ticket / Karte',u('ETickets',x.id,1),'id (barcodes/isMembership)');else{a('Gutschein/Coupon',u('Coupons',x.id),'id');a('Wertgutschein',u('GiftCertificates',x.id),'id')}
+     if(x.directDebitProcessing){a('Lastschrift-Vertrag',u('DirectDebitContractSetUp',x.id),'id (directDebitProcessing)');a('Zahlungsplan',u('DirectDebitContractPayment',x.id),'id')}}
+   else if(t=='ActivityReservationSalesItem'){if(x.orderId)a('Bestellbestätigung',u('ActivityOrder',x.orderId),'orderId');a('Anmeldung',u('ActivitySubscriptions',x.id),'id');if(x.entryId)a('E-Ticket',u('ETicketByActivityEntry',x.entryId,1),'entryId')}
+   else if(t=='CultureEventReservationSalesItem')a('Tickets',u('CultureEvents',x.cultureEventReservationId),'cultureEventReservationId');
+   else if(t=='FitnessActivityDayReservationSalesItem')a('Fitness-Ticket',u('Fitness',x.fitnessActivityDayReservationId),'fitnessActivityDayReservationId');
+   else if(t=='RentalReservationSalesItem')a('Verleih',u('Rental',x.rentalReservationId),'rentalReservationId');
+   else if(t=='PlaceReservationSalesItem')a('Reservierungsnachweis',u('ReservationProof',`${x.id}/${x.reservationId}/${EMPTY}`),'id + reservationId');
+   else if(t=='RecurringPlaceReservationSalesItem')a('Serien-Nachweis',u('ReservationProof',`${x.id}/${EMPTY}/${x.serieId}`),'id + serieId');
+   else if(t=='SubscriptionProlongationSalesItem'){a('Abo-Dokument',u('Subscriptions',x.subscriptionId),'subscriptionId');a('E-Ticket',u('ETicketBySubscription',x.subscriptionId,1),'subscriptionId')}
+   else if(t=='FileSalesItem')a('Dossier',u('Files',x.fileActivityId),'fileActivityId');
+   else a('E-Ticket (Fallback)',u('ETickets',x.id,1),'id')});
+  if(res.salesSeriesId)out.push({pos:'Verkauf',typ:'Checkout-Ergebnis',feld:'salesSeriesId',lab:'Kassenbeleg',url:`${base}DigitalReceipt/${S_}/${res.salesSeriesId}/`});
+  if(res.invoiceId)out.push({pos:'Verkauf',typ:'Checkout-Ergebnis',feld:'invoiceId',lab:'Rechnung',url:u('Invoice',res.invoiceId)});
+  return out}
+function docsFromCheckout(){let res=S.lastRes;const t=$('#coJson').value.trim();if(t){try{const j=JSON.parse(t);res=j.result||j.response&&(j.response.result||j.response)||j}catch(e){return alert('Ungültiges JSON: '+e.message)}}
+  if(!res||!(res.salesItems||[]).length)return alert('Keine salesItems – erst Checkout ausführen oder Response einfügen');
+  const d=docsFor(res);$('#out-et').innerHTML='<table><tr><th>Position</th><th>$type</th><th>Feld</th><th>Dokument</th></tr>'+d.map(x=>`<tr><td>${esc(x.pos)}</td><td><small>${esc(x.typ)}</small></td><td><code>${esc(x.feld)}</code></td><td><a class="url" href="${x.url}" target="_blank">${esc(x.lab)}</a><br/><small>${esc(x.url)}</small></td></tr>`).join('')+'</table><p><small>0 Byte = keine Druckvorlage im Backoffice für diesen Typ.</small></p>'}
 function eticket(){const id=$('#salesItemId').value.trim();if(!id){alert('SalesItemId fehlt (aus CheckoutBasket)');return}
   const u=`${$('#docBase').value.replace(/\/$/,'')}/WebShopDocumentService.svc/ETickets/${ctx().ShopId}/${ctx().Language}/${id}/`;
   const uu=u;$('#out-et').innerHTML=`<p>GET <a class="url" href="${uu}" target="_blank">${esc(uu)}</a> · <a href="${uu}" download="eticket-${id}.pdf">⬇ Download</a></p><p><small>Liefert das PDF direkt (Content-Type application/pdf). Real: Ausstellungs-Ticket → PDF 154 KB; Artikel ohne Barcode/Vorlage → leere Antwort.</small></p><iframe src="${uu}" style="width:100%;height:500px;border:1px solid #ccc"></iframe>`}
