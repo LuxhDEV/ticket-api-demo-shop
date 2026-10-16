@@ -55,3 +55,6 @@ Behoben: 30-s-Timeout für alle Calls (vorher blieb der Doppelklick-Schutz bei h
 
 ## Testschleife (16.10.2026, 20:00–20:20)
 In 5 Runden behoben: Dokument-Links bei salesItems = null / Nicht-Objekt, Export nach Neuladen, neue SessionId verwirft den Basket, Pflichtfeld-Prüfung bei Login/Registrierung/SavePerson/FindPerson/AuthenticateUser, Mengen und Beträge nur noch als Ziffern (kein 1e2/0x10, max. 9999), fehlgeschlagenes ReCalculate verwirft den alten Basket, Lock-Antwort übernimmt den aktuellen Kunden. Zusätzlich 4 neue `$type`s in der Tabelle von Schritt 6.
+
+## ExtendLockPeriodByTime vor dem Checkout (16.10.2026)
+Vor CheckoutBasket (bzw. vor der PSP-Weiterleitung) werden alle LockTickets automatisch per `ExtendLockPeriodByTime` (3600 s ab Lock-Erstellung) verlängert. Bei `failed[]` oder einem Fehler bricht der Checkout mit rotem Hinweis ab, sonst werden die neuen LockTickets übernommen.
