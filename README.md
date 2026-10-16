@@ -23,7 +23,7 @@ Jeder Request lässt sich als curl oder Postman exportieren, das Passwort steht 
 ## Audit gegen Doku und echte Responses (16.10.2026)
 - **Preisgruppen-Typen korrigiert:** 0 = General (gilt überall), 1 = Platzreservierung, 2 = Ticketing, 3 = Eintritt, 4 = Verkauf & Ausstellungen, 5 = Verleih, 6 = Wellness. Die frühere Angabe (0 = Platzreservierung … 5 = Wellness) war um eins verschoben.
 - **Reihenfolge:** ListPaymentMethods kommt vor ValidateBasket. Die Zahlungen stehen in `basket.payments[]`.
-- **Kunde:** Dieser Demo-Shop verlangt in ValidateBasket für jeden Artikel einen Kunden. An keinem Artikel-Feld ist das ablesbar.
+- **Kunde:** ValidateBasket braucht eine gültige CustomerId, entweder die eingeloggte Person oder den Web-Systemkunden (Gastkauf, siehe unten).
 - **Felder direkt am Produkt**, jetzt in der Oberfläche angezeigt und vorab geprüft:
   - Artikel: `allowPriceChangeWebshop`, `maximumSalesQuantity` (0 = unbegrenzt), `isDigitalWalletItem`, `isSubscriptionItem`, `blocked`/`unAvailable`
   - Ausstellung: `askNames`, `minimumAge`, `maxTicketsPerWebSale`, `controlType`/`maxVisitorsPerGroup`, `enablePresale`, `blocked`
@@ -32,3 +32,8 @@ Jeder Request lässt sich als curl oder Postman exportieren, das Passwort steht 
   - Abo: `isEticket`, `familyItem`, `maxPersons`, `personsMinimumAge`, `periodDuration`
 - **E-Ticket-URL** endet mit `/`. Bei Aktivitäten lautet sie `…/ActivitySubscriptions/{ShopId}/{Sprache}/{SubscriptionId}`.
 - **ExtendLockPeriod:** Danach wird das neue LockTicket aus der Response weiterverwendet.
+
+## Gastkauf (16.10.2026)
+- Korrektur: Ein Kauf ohne Konto geht doch, die frühere Aussage „anonym nicht möglich“ war falsch. Als CustomerId dient die ID des Web-Systemkunden (Feld „Gast-Kunden-ID“). Die Käuferdaten kommen in `basket.anonymousPerson` (Typ `Anonymous`: Name, FirstName, Street1, Street2, Number, Box, ZipCode, Home, Country, Email, Telephone, Newsletter).
+- In der Oberfläche: Schalter „als Gast kaufen“ im Checkout und ein Formular für die Käuferdaten (Name und E-Mail sind Pflicht).
+- Nur mit Kundenkonto (Badge, im Gastmodus gesperrt): Abos und Mehrfachkarten (`isSubscriptionItem`, alle Artikel aus FindSubscriptionArticles), Wallet-Artikel (`isDigitalWalletItem`) und Aktivitäten (`ActivityReservation`). Die API lehnt sie im Gastmodus nicht ab, darum sperrt der Shop sie.
