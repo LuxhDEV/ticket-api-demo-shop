@@ -19,3 +19,16 @@ Jeder Request lässt sich als curl oder Postman exportieren, das Passwort steht 
 - CheckoutBasket und CreditSale buchen echt. Vor beiden Calls kommt eine Bestätigungsabfrage.
 - Pro Warenkorb bzw. Kauf eine neue SessionId verwenden.
 - Eingaben werden geprüft: GUID-Format von ShopId/SessionId, Mengen als ganze Zahl ≥ 0 (0 = Position entfernen), Gutscheinbetrag > 0. Ein Doppelklick-Schutz verhindert doppelte Calls.
+
+## Audit gegen Doku und echte Responses (16.10.2026)
+- **Preisgruppen-Typen korrigiert:** 0 = General (gilt überall), 1 = Platzreservierung, 2 = Ticketing, 3 = Eintritt, 4 = Verkauf & Ausstellungen, 5 = Verleih, 6 = Wellness. Die frühere Angabe (0 = Platzreservierung … 5 = Wellness) war um eins verschoben.
+- **Reihenfolge:** ListPaymentMethods kommt vor ValidateBasket. Die Zahlungen stehen in `basket.payments[]`.
+- **Kunde:** Dieser Demo-Shop verlangt in ValidateBasket für jeden Artikel einen Kunden. An keinem Artikel-Feld ist das ablesbar.
+- **Felder direkt am Produkt**, jetzt in der Oberfläche angezeigt und vorab geprüft:
+  - Artikel: `allowPriceChangeWebshop`, `maximumSalesQuantity` (0 = unbegrenzt), `isDigitalWalletItem`, `isSubscriptionItem`, `blocked`/`unAvailable`
+  - Ausstellung: `askNames`, `minimumAge`, `maxTicketsPerWebSale`, `controlType`/`maxVisitorsPerGroup`, `enablePresale`, `blocked`
+  - Preis: `minSaleQuantity`/`maxSaleQuantity`, `askNames`, `hasAllowedSubscriptions`, `mandatoryBuyMinQtyWeb`
+  - Zeitfenster: `finalSubscriptionDate`, `blocked`/`isExcluded`
+  - Abo: `isEticket`, `familyItem`, `maxPersons`, `personsMinimumAge`, `periodDuration`
+- **E-Ticket-URL** endet mit `/`. Bei Aktivitäten lautet sie `…/ActivitySubscriptions/{ShopId}/{Sprache}/{SubscriptionId}`.
+- **ExtendLockPeriod:** Danach wird das neue LockTicket aus der Response weiterverwendet.

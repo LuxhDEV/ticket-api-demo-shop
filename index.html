@@ -45,9 +45,9 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div id="out-ver" style="margin:8px 0"></div>
 <!-- ================= ARTIKEL ================= -->
 <div class="tab on" id="t-art">
-<div class="when"><b>Standard-Kauffluss:</b> FindArticles → (Kunde) → ReCalculateBasket → ValidateBasket → ListPaymentMethods → (PSP-Zahlung) → CheckoutBasket → E-Ticket. Der Server hält <b>keinen</b> Warenkorb – das <code>basket</code>-Objekt lebt im Client und wird von Schritt zu Schritt weitergereicht.</div>
+<div class="when"><b>Standard-Kauffluss:</b> FindArticles → Kunde (Login) → ReCalculateBasket → ListPaymentMethods → ValidateBasket (mit <code>basket.payments</code>) → (PSP-Zahlung) → CheckoutBasket → E-Ticket. <b>Achtung Demo-Shop:</b> ValidateBasket verlangt hier bei <b>jedem</b> Artikel einen Kunden (anonym → Regel <code>BasketValidateArticleMandatorySubscription</code>, „Kunde ungültig“). Das ist eine Shop-Einstellung und an keinem Artikel-Feld ablesbar – darum vor dem Warenkorb einloggen. Der Server hält <b>keinen</b> Warenkorb (Ausnahme: Locks, per <code>ListLockedBasketItems{PersonId}</code> wieder ladbar) – das <code>basket</code>-Objekt lebt im Client und wird von Schritt zu Schritt weitergereicht.</div>
 <div class="step"><h3><span>1</span>Artikel laden – <code>Articles/FindArticles</code></h3>
-<div class="when"><b>Wann:</b> Beim Aufbau der Shop-/Produktseite, um verkaufbare Artikel inkl. Preis anzuzeigen. <code>Includes.Price: true</code> liefert den Listenpreis (nur zur Anzeige – rechnen tut später die API).</div>
+<div class="when"><b>Wann:</b> Beim Aufbau der Shop-/Produktseite, um verkaufbare Artikel inkl. Preis anzuzeigen. <code>Includes.Price: true</code> liefert den Listenpreis (nur zur Anzeige – rechnen tut später die API). Direkt am Artikel stehen außerdem: <code>allowPriceChangeWebshop</code> (freier Betrag), <code>maximumSalesQuantity</code> (0 = unbegrenzt), <code>isDigitalWalletItem</code>, <code>isSubscriptionItem</code>, <code>blocked</code>/<code>unAvailable</code> – die Tabelle zeigt sie als Badges und prüft die Menge vorab.</div>
 <button class="go" onclick="findArticles()">FindArticles ausführen</button>
 <div id="arts"></div>
 <div class="flow"><b>Weiter:</b> Gewählter Artikel wird als <code>ArticleSale</code>-Position (<code>$type</code>, <code>Article.Id</code>, eigene Positions-GUID <code>Id</code>, <code>Quantity</code>) in den Warenkorb gelegt.</div>
@@ -60,24 +60,24 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="flow"><b>Weiter:</b> Das <b>komplette</b> <code>basket</code>-Objekt aus der Response wird gespeichert und in Validate/Checkout unverändert weiterverwendet.</div>
 <div id="out-rc"></div></div>
 <div class="step"><h3><span>3</span>Zahlarten laden – <code>General/ListPaymentMethods</code></h3>
-<div class="when"><b>Wann:</b> Vor der Zahlungsauswahl. Nur Context nötig. Die <code>id</code> der gewählten Zahlart kommt als <code>PaymentMethodId</code> in <code>payments[]</code>.</div>
+<div class="when"><b>Wann:</b> Vor der Zahlungsauswahl. Nur Context nötig (optional <code>Criteria.PointOfSaleId</code>). Die <code>id</code> der gewählten Zahlart kommt als <code>PaymentMethodId</code> in <code>payments[]</code>.</div>
 <button class="go" onclick="listPM()">ListPaymentMethods ausführen</button>
 <div class="row"><small>Vorauswahl: Rechnungs-Zahlart (invoicePaymentMethod) – schließt ohne externen PSP ab.</small> Gewählt: <select id="pmSel" onchange="S.paymentMethodId=this.value"></select></div>
 <div id="out-pm"></div></div>
 <div class="step"><h3><span>4</span>Warenkorb prüfen – <code>General/ValidateBasket</code></h3>
-<div class="when"><b>Wann:</b> Beim Hinzufügen zum Warenkorb und <b>unbedingt direkt vor dem Zahlungsstart</b> (PSP). Body: <code>basket</code> aus Schritt 2 + <code>payments[{Amount, Currency, PaymentMethodId}]</code> (Summe = <code>basket.price</code>). Erfolg: <code>result.isValid == true</code>, sonst <code>message</code>/<code>brokenRuleName</code> (pro Position max. 1 Regel).</div>
+<div class="when"><b>Wann:</b> Beim Hinzufügen zum Warenkorb und <b>unbedingt direkt vor dem Zahlungsstart</b> (PSP). Body: <code>{basket}</code> aus Schritt 2, darin <code>basket.payments[{Amount, Currency, PaymentMethodId}]</code> (Summe = <code>basket.price</code>). Erfolg: <code>result.isValid == true</code>, sonst <code>message</code>/<code>brokenRuleName</code> (pro Position max. 1 Regel).</div>
 <button class="go" onclick="validate()">ValidateBasket ausführen</button>
 <div class="flow"><b>Weiter:</b> Nur wenn gültig → Zahlung beim PSP durchführen → danach Checkout mit demselben basket.</div>
 <div id="out-val"></div></div>
 <div class="step"><h3><span>5</span>Kauf buchen – <code>General/CheckoutBasket</code></h3>
-<div class="when"><b>Wann:</b> Nachdem der Kunde (beim PSP) erfolgreich bezahlt hat. Validiert intern nochmals und bucht den Verkauf. Optional <code>orderId</code>/<code>payId</code>/<code>trxId</code> aus dem eigenen System/PSP. Erfolg: <code>result.resultState == 1</code>, liefert <code>salesItems[]</code>, <code>salesOrderNumber</code>, <code>invoiceId</code>.</div>
+<div class="when"><b>Wann:</b> Nachdem der Kunde (beim PSP) erfolgreich bezahlt hat. Validiert intern nochmals und bucht den Verkauf. Optional <code>orderId</code>/<code>payId</code>/<code>trxId</code> aus dem eigenen System/PSP. Erfolg: <code>result.resultState == 1</code>, liefert <code>salesItems[]</code>, <code>salesOrderNumber</code>, <code>salesSeriesId</code> (für Storno per CreditSale) und <code>invoiceId</code> (nur bei Zahlung auf Rechnung).</div>
 <div class="warn">⚠ <b>Achtung: Dieser Call löst einen ECHTEN Verkauf im Kassen-/Ticketsystem aus!</b> Es erscheint vorher eine Bestätigungsabfrage.</div>
 <div class="row">orderId (optional) <input id="orderId" placeholder="z.B. DEMO-123"/></div>
 <button class="go danger" onclick="checkout()">CheckoutBasket ausführen (echter Kauf)</button>
 <div class="flow"><b>Weiter:</b> Eine beliebige <code>salesItems[].id</code> genügt für die E-Ticket-URL.</div>
 <div id="out-co"></div></div>
 <div class="step"><h3><span>6</span>E-Ticket (PDF) anzeigen</h3>
-<div class="when"><b>Wann:</b> Nach erfolgreichem Checkout (Bestätigungsseite / E-Mail). Kein JSON-Call, sondern ein REST-GET auf den Dokumentendienst: <code>https://{webserviceurl}/WebShopDocumentService.svc/ETickets/{ShopId}/{Sprache}/{SalesItemId}</code>. Für Aktivitäten stattdessen <code>…/ActivitySubscriptions/{ShopId}/{Sprache}/{entryId}</code>.</div>
+<div class="when"><b>Wann:</b> Nach erfolgreichem Checkout (Bestätigungsseite / E-Mail). Kein JSON-Call, sondern ein REST-GET auf den Dokumentendienst: <code>https://{webserviceurl}/WebShopDocumentService.svc/ETickets/{ShopId}/{Sprache}/{SalesItemId}/</code> (abschließender Slash nötig, sonst Fehler). Für Aktivitäten stattdessen <code>…/ActivitySubscriptions/{ShopId}/{Sprache}/{SubscriptionId}</code>.</div>
 <div class="row">webserviceurl <input id="docBase" style="width:260px" value="" placeholder="https://api.example.com"/> SalesItemId <input id="salesItemId" placeholder="aus Checkout-Response" style="width:300px"/></div>
 <button class="go" onclick="eticket()">E-Ticket-URL bauen</button>
 <div id="out-et"></div></div>
@@ -106,7 +106,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="tab" id="t-expo">
 <div class="when"><b>Zeitfenster-Tickets:</b> FindExpositions → FindExpositionPeriodDates → ListExpositionPeriods → FindExpositionPrices → <b>LockBasketItems</b> → dann wie Artikelkauf ab Schritt 2 (ReCalculate/Validate/…/Checkout). Datumswerte immer als <b>lokale Zeit ohne „Z“</b> senden, z.B. <code>2027-01-16T00:00:00</code>.</div>
 <div class="step"><h3><span>1</span><code>Expositions/FindExpositions</code></h3>
-<div class="when"><b>Wann:</b> Übersicht der buchbaren Ausstellungen/Eintritte. <code>Includes.Pricing</code> liefert Tickets inkl. Preis.</div>
+<div class="when"><b>Wann:</b> Übersicht der buchbaren Ausstellungen/Eintritte. <code>Includes.Pricing</code> liefert Tickets inkl. Preis. Direkt an der Ausstellung stehen Regeln, die der Shop <b>vor</b> dem Lock anzeigt/prüft: <code>askNames</code> (Teilnehmernamen erfragen), <code>minimumAge</code>, <code>maxTicketsPerWebSale</code> (0 = unbegrenzt), <code>controlType</code>/<code>maxVisitorsPerGroup</code>, <code>enablePresale</code>/<code>presaleFrom</code>, <code>blocked</code>.</div>
 <button class="go" onclick="findExpo()">FindExpositions ausführen</button> <select id="expoSel"></select>
 <div id="out-fx"></div></div>
 <div class="step"><h3><span>2</span><code>Expositions/FindExpositionPeriodDates</code></h3>
@@ -115,11 +115,11 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <button class="go" onclick="findDates()">FindExpositionPeriodDates ausführen</button> <select id="dateSel"></select>
 <div id="out-fd"></div></div>
 <div class="step"><h3><span>3</span><code>Expositions/ListExpositionPeriods</code></h3>
-<div class="when"><b>Wann:</b> Nach Datumswahl: Zeitfenster des Tages mit Belegung (<code>occupancy.remaining</code>).</div>
+<div class="when"><b>Wann:</b> Nach Datumswahl: Zeitfenster des Tages mit Belegung (<code>occupancy.remaining</code>), Anmeldeschluss <code>finalSubscriptionDate</code>; <code>blocked</code>/<code>isExcluded</code> werden ausgeblendet. Bei <code>controlType = 1</code> zählt die Kapazität in <b>Gruppen</b> (max. <code>occupancy.maxVisitorsPerGroup</code> Personen je Gruppe).</div>
 <button class="go" onclick="listPeriods()">ListExpositionPeriods ausführen</button> <select id="perSel"></select>
 <div id="out-lp"></div></div>
 <div class="step"><h3><span>4</span><code>Expositions/FindExpositionPrices</code></h3>
-<div class="when"><b>Wann:</b> Nach Datumswahl <b>immer</b>: am Tag gültige Preise/Tickettypen. <code>IncludeActivePeriods: true</code> ist wichtig – sonst kommen am Tag ungültige Preise mit.</div>
+<div class="when"><b>Wann:</b> Nach Datumswahl <b>immer</b>: am Tag gültige Preise/Tickettypen. <code>IncludeActivePeriods: true</code> ist wichtig – sonst kommen am Tag ungültige Preise mit. Pro Tickettyp liefert die API <code>minSaleQuantity</code>/<code>maxSaleQuantity</code> (0 = keine Grenze), <code>askNames</code> und <code>hasAllowedSubscriptions</code> (Mitgliedschaft nötig) – die Tabelle zeigt sie, und der Lock wird vorher im Client geprüft (real: 3 statt max. 2 → Regel <code>OrganisedVisitSaleQuantityRule</code>).</div>
 <button class="go" onclick="findPrices()">FindExpositionPrices ausführen</button>
 <div id="prices"></div>
 <div class="warn">Hinweis (real beobachtet): Die Response enthält dieselbe Preisgruppe mehrfach – als Staffel nach <code>minimumQuantity</code> (z.B. Erwachsene 0,00 / ab 3: 7,33 / ab 4: 6,50). Die Tabelle zeigt je <code>group.id</code> nur einen Eintrag. <b>Jede group.id darf im Lock nur einmal vorkommen</b>, sonst Fehler „Ein Element mit dem gleichen Schlüssel wurde bereits hinzugefügt“. Mehrere Tickettypen (Erwachsene + Kinder) = mehrere Entries in <b>einer</b> ExpositionPeriodReservation.</div><div class="flow"><b>Weiter:</b> Für LockBasketItems wird <code>PriceGroupId = expositionPrice.group.id</code> verwendet (nicht <code>.id</code>!).</div>
@@ -144,7 +144,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 
 
 <div class="tab" id="t-price">
-<div class="when"><b>Kundenspezifische Preise:</b> Preise hängen an <b>Preisgruppen</b> (Rabattgruppen), die einem Kunden im Kassen-/Ticketsystem zugeordnet sind (<code>Person.PriceGroups</code>, je Modul: 0=Platzreservierung, 1=Ticketing, 2=Eintritt, 3=Verkauf (&amp; Ausstellungen), 4=Verleih, 5=Wellness). Die API rechnet sie automatisch ein, sobald die <b>CustomerId</b> gesetzt ist. Darum: <b>nach Login immer ReCalculateBasket</b>.</div>
+<div class="when"><b>Kundenspezifische Preise:</b> Preise hängen an <b>Preisgruppen</b> (Rabattgruppen), die einem Kunden im Kassen-/Ticketsystem zugeordnet sind (<code>Person.PriceGroups</code>, <code>Type</code> je Modul: 0=General (gilt überall), 1=Platzreservierung, 2=Ticketing, 3=Eintritt, 4=Verkauf (&amp; Ausstellungen), 5=Verleih, 6=Wellness). Die API rechnet sie automatisch ein, sobald die <b>CustomerId</b> gesetzt ist. Darum: <b>nach Login immer ReCalculateBasket</b>.</div>
 <div class="step"><h3><span>1</span>Alle Preisgruppen – <code>General/FindPriceGroups</code></h3>
 <div class="when"><b>Wann:</b> Stammdaten: welche Preis-/Rabattgruppen gibt es (z.B. „20% ULTRAPREMIUM“, „5% GWK“). Optional <code>Type</code> filtern.</div>
 <button class="go" onclick="call('General','FindPriceGroups',{SearchCriteria:{}},'#out-pg')">FindPriceGroups</button><div id="out-pg"></div></div>
@@ -162,7 +162,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="tab" id="t-abo">
 <div class="when"><b>Abos/Mehrfachkarten</b> (10er-Karte, Quartalskarte …): FindSubscriptionArticles → ArticleSale in den Warenkorb → ReCalculate → Validate → Zahlarten → Checkout (Tab Artikelkauf ab Schritt 2). Achtung: hier <code>Criteria</code> + <code>Includes.Prices</code> (bei FindArticles: <code>SearchCriteria</code> + <code>Price</code>).</div>
 <div class="step"><h3><span>1</span><code>Subscriptions/FindSubscriptionArticles</code></h3>
-<div class="when"><b>Wann:</b> Abo-/Kartenangebot anzeigen. Wichtige Felder: <code>numberOfTurns</code> (z.B. 10), <code>periodDuration</code>, <code>isEticket</code>, <code>familyItem</code>.</div>
+<div class="when"><b>Wann:</b> Abo-/Kartenangebot anzeigen. Wichtige Felder (direkt am Abo, Spalte „Hinweise“): <code>numberOfTurns</code> (z.B. 10), <code>periodDuration</code>, <code>isEticket</code>, <code>familyItem</code>, <code>maxPersons</code>, <code>personsMinimumAge</code>, <code>maximumSalesQuantity</code> (0 = unbegrenzt).</div>
 <button class="go" onclick="findAbos()">FindSubscriptionArticles</button><div id="abos"></div>
 <div class="flow"><b>Weiter:</b> Abo als <code>ArticleSale</code> mit <code>Article.Id = subscriptionArticle.id</code> → Tab Artikelkauf Schritt 2. Real: „10er Karte“ 27,00 € → ValidateBasket isValid ✔; „10er Eintritt“ → ungültig („Erforderliche Dauerkarte … nicht gefunden“).</div>
 <div id="out-abo"></div></div></div>
@@ -173,7 +173,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="warn"><b>Sicherheitsnetz:</b> ReCalculateBasket übernimmt <code>CustomPrice</code> technisch bei jedem Artikel. <b>ValidateBasket</b> lehnt einen nicht freigegebenen freien Betrag als letzte Prüfung vor der Zahlung ab (Regel <code>ArticleCustomPrice</code>). Die Anzeige im Shop richtet sich aber nach dem Artikel-Feld.<br/>
 <b>Real getestet (16.10.2026, 35 €):</b> ✔ „Gutschein (Druck)“ (Listenpreis 5 €) → 35 € gültig (auch 0,50 € und 1000 € – keine Min/Max-Grenze); Auffällig: „Geldwertkarte Variabel“ (Digital-Wallet-Artikel) hat <code>allowPriceChangeWebshop = false</code>, wurde von ValidateBasket mit 35 € aber akzeptiert – im Shop daher nicht als freier Betrag angeboten; ✘ „Gutschein 50€“ und „Wertgutschein neu“ → ArticleCustomPrice. Achtung Geldwertkarte: <code>DigitalWalletCharge</code> zusätzlich setzen addiert (100 + 35 = 135) – für variablen Betrag nur <code>CustomPrice</code> verwenden.</div>
 <div class="step"><h3><span>1</span>Gutschein-Artikel wählen (<code>Articles/FindArticles</code>)</h3>
-<div class="when"><b>Wann:</b> Gutscheinseite aufbauen. FindArticles liefert <b>kein</b> Kennzeichen „variabel“ – welche Artikel freigegeben sind, muss der Shop kennen (Konfiguration) oder per Validate ausprobieren.</div>
+<div class="when"><b>Wann:</b> Gutscheinseite aufbauen. Die Liste zeigt nur Artikel mit <code>allowPriceChangeWebshop = true</code> (Feld direkt am Artikel aus FindArticles).</div>
 <button class="go" onclick="gvLoad()">Artikel laden</button> <select id="gvArt"></select>
 <div id="out-gv0"></div></div>
 <div class="step"><h3><span>2</span>Betrag eingeben → <code>General/ReCalculateBasket</code></h3>
@@ -183,7 +183,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="flow"><b>Weiter:</b> basket → ValidateBasket (hier oder im Tab Artikelkauf) → Zahlarten → Checkout.</div>
 <div id="out-gv1"></div></div>
 <div class="step"><h3><span>3</span><code>General/ValidateBasket</code></h3>
-<div class="when"><b>Wann:</b> Vor der Zahlung – prüft, ob der Artikel einen freien Betrag erlaubt.</div>
+<div class="when"><b>Wann:</b> Vor der Zahlung – letzte Sicherheitsprüfung des ganzen Warenkorbs (u. a. Regel <code>ArticleCustomPrice</code>).</div>
 <button class="go" onclick="gvValidate()">ValidateBasket</button><div id="out-gv2"></div></div>
 </div>
 <div class="tab" id="t-pro">
@@ -200,14 +200,14 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <p>Nutze die Links „Menge“/„entfernen“ an jeder Position im Warenkorb oben.</p>
 <div id="out-qty"></div></div>
 <div class="step"><h3><span>3</span>LockTickets verlängern – <code>ExtendLockPeriod</code> / <code>ExtendLockPeriodByTime</code></h3>
-<div class="when"><b>Wann:</b> Locks laufen ab (Webshop-Konfig., hier ca. 30 min). <code>ExtendLockPeriod</code> bei jeder Nutzerinteraktion: setzt Ablauf = jetzt + Standarddauer. <code>ExtendLockPeriodByTime {Seconds}</code> rechnet ab <b>Erstellungszeitpunkt</b> des Locks (nicht ab jetzt!) – z.B. vor Weiterleitung zum PSP großzügig verlängern; negative Sekunden = bis 3000-12-31 („in Bezahlung“). Response: <code>extendedLocks.succeeded[]/failed[]</code>.</div>
+<div class="when"><b>Wann:</b> Locks laufen ab (Webshop-Konfig., hier ca. 30 min). <code>ExtendLockPeriod</code> bei jeder Nutzerinteraktion: setzt Ablauf = jetzt + Standarddauer. <code>ExtendLockPeriodByTime {Seconds}</code> rechnet ab <b>Erstellungszeitpunkt</b> des Locks (nicht ab jetzt!) – z.B. vor Weiterleitung zum PSP großzügig verlängern; negative Sekunden = bis 3000-12-31 („in Bezahlung“). Response: <code>extendedLocks.succeeded[]/failed[]</code>. Danach immer mit den <b>neuen</b> LockTickets aus der Response weiterarbeiten (Guide LockTickets) – die Demo übernimmt sie automatisch in den Warenkorb.</div>
 <div id="locks"></div>
 <div class="row">Sekunden <input id="extSec" style="width:80px" value="3600"/></div>
 <button class="go" onclick="extendLocks(false)">ExtendLockPeriod</button><button class="go" onclick="extendLocks(true)">ExtendLockPeriodByTime</button>
 <div class="warn"><b>Real:</b> ExtendLockPeriod → 17:51:53 → 17:51:55 (jetzt+30 min); ByTime 3600 s → 18:21 (Erstellung 17:21 + 1 h).</div>
 <div id="out-ext"></div></div>
 <div class="step"><h3><span>4</span>Teilzahlung / mehrere Zahlarten</h3>
-<div class="when"><b>Wann:</b> Kunde zahlt z.B. teils mit Gutschein/Wallet, Rest per Karte – oder Kasse: bar + Rechnung. <code>payments[]</code> enthält mehrere Einträge; <b>Summe muss exakt basket.price sein</b>, sonst ValidateBasket: „The total price of payments (…) must be equal to the total price…“.</div>
+<div class="when"><b>Wann:</b> Kunde zahlt z.B. teils mit Gutschein/Wallet, Rest per Karte – oder Kasse: bar + Rechnung. <code>basket.payments[]</code> enthält mehrere Einträge; <b>Summe muss exakt basket.price sein</b>, sonst ValidateBasket: „The total price of payments (…) must be equal to the total price…“.</div>
 <div class="row">Zahlart 1 <select id="sp1"></select> Betrag <input id="spA1" style="width:80px"/> Zahlart 2 <select id="sp2"></select> Betrag <input id="spA2" style="width:80px"/> <button class="go" onclick="splitPrep()" style="background:#888">Zahlarten laden &amp; 50/50 vorschlagen</button></div>
 <button class="go" onclick="splitValidate()">ValidateBasket mit 2 Payments</button>
 <div class="warn"><b>Real:</b> 17,50 RECHNUNG + 17,50 BARZAHLUNG = 35,00 → isValid ✔; 17,50 + 1,00 → ✘ Summenfehler. Kein Checkout ausgeführt.</div>
@@ -284,7 +284,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <div class="when"><b>Wann:</b> „Meine Tickets“ / Ticket erneut herunterladen. <code>Criteria{PersonId, From, Until, Paging}</code> → ticketNo, expositionName, Datum; PDF dann per E-Ticket-URL. (Methodenname im JSON-Modul General, nicht Profile.)</div>
 <button class="go" onclick="etickets()">FindETickets</button>
 <div class="warn"><b>Real:</b> 3 Badelandschaft-Tickets (Barcodes 5298651494164827, 5298676477122590, 5298676533859727).</div><div id="etTbl"></div><div id="out-h3"></div></div>
-<div class="step"><h3><span>4</span>Externe Kunden-ID – <code>SavePersonExternalMasterId</code> / <code>GetExternalMapping</code></h3>
+<div class="step"><h3><span>4</span>Externe Kunden-ID – <code>SavePersonExternalMasterId</code></h3>
 <div class="when"><b>Wann:</b> Kunde existiert auch im eigenen CRM/Shop-System → dessen ID im Kassen-/Ticketsystem hinterlegen (<code>Person.externalMasterID</code>), damit man ihn später wiederfindet. <code>GetExternalMapping{ExternalId|ExternalStringId, Entity}</code> fragt Mapping-Tabellen für Integrationen ab.</div>
 <div class="row">ExternalMasterId <input id="extId" value="" placeholder="z. B. EXT-123"/></div>
 <button class="go" onclick="call('General','SavePersonExternalMasterId',{Criteria:{PersonId:cust(),ExternalMasterId:$('#extId').value}},'#out-ext2')">SavePersonExternalMasterId</button>
@@ -306,7 +306,7 @@ table{border-collapse:collapse;font-size:13px;margin:6px 0}td,th{border:1px soli
 <tr><td>Reseller inaktiv</td><td><code>ArticleResellerPeriod</code></td><td>AsReseller entfernen / Backoffice</td></tr></table>
 <div id="out-err"></div></div>
 <div class="step"><h3><span>2</span>Retry/Recovery nach fehlgeschlagener Zahlung</h3>
-<div class="when"><b>Ablauf:</b> Validate ✔ → Weiterleitung zum PSP → Zahlung scheitert/abgebrochen. Es wurde <b>nichts gebucht</b> (Checkout kam nie). Gelockte Positionen verfallen beim Lock-Ablauf automatisch (temporäre Reservierungen werden gelöscht); Coupons ggf. per <code>CouponRelease</code> freigeben. <b>Neustart:</b> (1) <code>ExtendLockPeriod</code> – succeeded? dann weiter mit (3); failed → (2) Positionen neu <code>LockBasketItems</code> (aus den ursprünglichen Wünschen, nicht aus dem alten Lock) → (3) <code>ReCalculateBasket</code> → (4) <code>ValidateBasket</code> → erneute Zahlung. Tipp: vor PSP-Redirect <code>ExtendLockPeriodByTime</code> mit großzügiger Dauer, und den Basket (StateBag) lokal sichern.</div>
+<div class="when"><b>Ablauf:</b> Validate ✔ → Weiterleitung zum PSP → Zahlung scheitert/abgebrochen. Es wurde <b>nichts gebucht</b> (Checkout kam nie). Gelockte Positionen verfallen beim Lock-Ablauf automatisch (temporäre Reservierungen werden gelöscht). <b>Neustart:</b> (1) <code>ExtendLockPeriod</code> – succeeded? dann weiter mit (3); failed → (2) Positionen neu <code>LockBasketItems</code> (aus den ursprünglichen Wünschen, nicht aus dem alten Lock) → (3) <code>ReCalculateBasket</code> → (4) <code>ValidateBasket</code> → erneute Zahlung. Tipp: vor PSP-Redirect <code>ExtendLockPeriodByTime</code> mit großzügiger Dauer, und den Basket (StateBag) lokal sichern.</div>
 <button class="go" onclick="recovery()">Recovery für aktuellen Warenkorb durchspielen</button><div id="out-rec"></div></div></div>
 <div class="tab" id="t-lang">
 <div class="when"><b>Sprache:</b> <code>Context.Language</code> (ISO 639-1, Default NL) steuert Texte/Namen in der Response. Der Schalter setzt die Sprache für <b>alle</b> Calls (gleiches Feld wie oben in der Konfiguration).</div>
@@ -352,10 +352,13 @@ async function call(mod,meth,body,out){
   }catch(e){pre.textContent='Fehler: '+e+'\n(CORS/Netzwerk? Siehe README)';return null}}
 // ---------- Artikel ----------
 const cpOk=a=>!!(a&&(a.allowPriceChangeWebshop??a.AllowPriceChangeWebshop));
+const B=(t,c)=>` <span class="cp"${c?` style="background:${c}"`:''}>${t}</span>`;
+const artBadges=a=>(a.blocked||a.unAvailable?B('gesperrt','#b00'):'')+(a.maximumSalesQuantity>0?B('max '+a.maximumSalesQuantity,'#a60'):'')+(a.isDigitalWalletItem?B('Wallet','#36a'):'')+(a.isSubscriptionItem?B('Abo/Karte','#66a'):'');
+const maxQ=id=>{const a=(S.articles||[]).find(x=>x.id==id);return a&&a.maximumSalesQuantity>0?a.maximumSalesQuantity:0};
 const cpBadge=a=>cpOk(a)?' <span class="cp" title="allowPriceChangeWebshop = true">freier Betrag</span>':'';
 async function findArticles(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true}}},'#out-fa');if(!r)return;
-  S.articles=r.articles||[];$('#arts').innerHTML='<table><tr><th>Artikel</th><th>Listenpreis</th><th>Betrag</th><th>id</th><th></th></tr>'+S.articles.map((a,i)=>`<tr><td>${esc(a.name||'')}${cpBadge(a)}</td><td>${a.price??''}</td><td>${cpOk(a)?`<input id="amt${i}" inputmode="decimal" style="width:70px" placeholder="${a.price??''}" title="leer = Listenpreis"/> €`:''}</td><td><small>${a.id}</small></td><td><button class="go" onclick="addArt(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
-function addArt(i){const a=S.articles[i];const ai=document.getElementById('amt'+i);let cp=null;if(cpOk(a)&&ai&&ai.value.trim()!==''){cp=Number(ai.value.replace(',','.'));if(!(cp>0)||Math.abs(Math.round(cp*100)-cp*100)>1e-6)return alert('Betrag > 0 mit max. 2 Nachkommastellen eingeben (oder leer = Listenpreis)');S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust(),CustomPrice:cp});S._names=S._names||{};S._names[a.id]=a.name;return renderCart()}const ex=S.items.find(x=>x.Article&&x.Article.Id==a.id);if(ex)ex.Quantity++;else S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});S._names=S._names||{};S._names[a.id]=a.name;renderCart()}
+  S.articles=r.articles||[];$('#arts').innerHTML='<table><tr><th>Artikel</th><th>Listenpreis</th><th>Betrag</th><th>id</th><th></th></tr>'+S.articles.map((a,i)=>`<tr><td>${esc(a.name||'')}${cpBadge(a)}${artBadges(a)}</td><td>${a.price??''}</td><td>${cpOk(a)?`<input id="amt${i}" inputmode="decimal" style="width:70px" placeholder="${a.price??''}" title="leer = Listenpreis"/> €`:''}</td><td><small>${a.id}</small></td><td><button class="go" onclick="addArt(${i})"${a.blocked||a.unAvailable?' disabled':''}>+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
+function addArt(i){const a=S.articles[i];const ai=document.getElementById('amt'+i);let cp=null;if(cpOk(a)&&ai&&ai.value.trim()!==''){cp=Number(ai.value.replace(',','.'));if(!(cp>0)||Math.abs(Math.round(cp*100)-cp*100)>1e-6)return alert('Betrag > 0 mit max. 2 Nachkommastellen eingeben (oder leer = Listenpreis)');S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust(),CustomPrice:cp});S._names=S._names||{};S._names[a.id]=a.name;return renderCart()}const ex=S.items.find(x=>x.Article&&x.Article.Id==a.id&&!x.CustomPrice);const m=maxQ(a.id);if(m&&((ex?ex.Quantity:0)+1)>m)return alert(`„${a.name}“: maximal ${m} pro Verkauf (maximumSalesQuantity)`);if(ex)ex.Quantity++;else S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});S._names=S._names||{};S._names[a.id]=a.name;renderCart()}
 function itemLabel(x){const t=(x.$type||x['$type']||'').split(',')[0].split('.').pop();const a=x.Article||x.article;const q=x.Quantity??x.quantity;
   if(a)return `${q}× ${esc((S._names||{})[a.Id||a.id]||a.name||a.Id||a.id)}${(x.CustomPrice||x.customPrice)?' ('+(x.CustomPrice||x.customPrice)+' €)':''}`;
   const en=x.entries||x.Entries;if(en)return `${t} (${en.map(e=>(e.participantCount??e.ParticipantCount)+' Pers.').join(' + ')})`;return t}
@@ -393,18 +396,24 @@ async function authUser(){const r=await call('General','AuthenticateUser',{Crede
 async function findPerson(){await call('General','FindPerson',{Criteria:{Email:$('#fMail').value}},'#out-fp')}
 // ---------- Expositions ----------
 async function findExpo(){const r=await call('Expositions','FindExpositions',{SearchCriteria:{Includes:{Pricing:true}}},'#out-fx');
-  const l=(r&&r.result&&r.result.expositions)||[];$('#expoSel').innerHTML=l.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}
+  const l=(r&&r.result&&r.result.expositions)||[];S.expos=l;const fl=e=>[e.blocked&&'gesperrt',e.askNames&&'Namen erfragen',e.minimumAge>0&&'ab '+e.minimumAge+' J.',e.maxTicketsPerWebSale>0&&'max '+e.maxTicketsPerWebSale+' Tickets/Verkauf',e.controlType==1&&'Gruppen (max '+e.maxVisitorsPerGroup+' Pers.)',e.enablePresale&&'Vorverkauf ab '+String(e.presaleFrom||'').slice(0,10)].filter(Boolean).join(', ');
+  $('#expoSel').innerHTML=l.filter(e=>!e.excludeFromOverview).map(e=>`<option value="${e.id}"${e.blocked?' disabled':''}>${esc(e.name)}${fl(e)?' – '+esc(fl(e)):''}</option>`).join('')}
 async function findDates(){const r=await call('Expositions','FindExpositionPeriodDates',{SearchCriteria:{ExpositionId:$('#expoSel').value,From:$('#xFrom').value+'T00:00:00',Until:$('#xUntil').value+'T23:59:59'}},'#out-fd');
   const l=((r&&r.dates)||[]).filter(d=>d.isAvailable);$('#dateSel').innerHTML=l.map(d=>`<option>${d.date.slice(0,10)}</option>`).join('')}
 async function listPeriods(){const d=$('#dateSel').value;if(!d)return alert('Erst Datum wählen');
   const r=await call('Expositions','ListExpositionPeriods',{SearchCriteria:{ExpositionId:$('#expoSel').value,From:d+'T00:00:00',Until:d+'T23:59:59'}},'#out-lp');
-  const l=(r&&r.expositionPeriods)||[];$('#perSel').innerHTML=l.map(p=>`<option value="${p.id}">${p.from.slice(11,16)}–${p.until.slice(11,16)} (frei: ${p.occupancy?p.occupancy.remaining:'?'})</option>`).join('')}
+  const l=((r&&r.expositionPeriods)||[]).filter(p=>!p.blocked&&!p.isExcluded);S.periods=l;$('#perSel').innerHTML=l.map(p=>`<option value="${p.id}"${p.occupancy&&p.occupancy.remaining<=0?' disabled':''}>${p.from.slice(11,16)}–${p.until.slice(11,16)} (frei: ${p.occupancy?p.occupancy.remaining:'?'}${p.occupancy&&p.occupancy.controlType==1?' Gruppe(n), max '+p.occupancy.maxVisitorsPerGroup+' Pers.':''}${p.finalSubscriptionDate?', Anmeldeschluss '+p.finalSubscriptionDate.slice(11,16):''})</option>`).join('')}
 async function findPrices(){const d=$('#dateSel').value;if(!d)return alert('Erst Datum wählen');
   const r=await call('Expositions','FindExpositionPrices',{Criteria:{ExpositionId:$('#expoSel').value,ExpositionPeriodDate:d+'T00:00:00',IncludeActivePeriods:true}},'#out-pr');
-  S.allPrices=(r&&r.expositionPrices)||[];S.prices=Object.values(S.allPrices.reduce((m,p)=>{if(!m[p.group.id]||p.minimumQuantity<m[p.group.id].minimumQuantity)m[p.group.id]=p;return m},{}));$('#prices').innerHTML='<table><tr><th>Tickettyp (group.name)</th><th>Preis</th><th>group.id → PriceGroupId</th><th>Anzahl</th></tr>'+S.prices.map((p,i)=>`<tr><td>${esc(p.group.name)}</td><td>${p.amount}</td><td><small>${p.group.id}</small></td><td><input class="s" style="width:50px" type="number" min="0" id="pq${i}" value="${i==0?1:0}"></td></tr>`).join('')+'</table>'}
+  S.allPrices=(r&&r.expositionPrices)||[];S.prices=Object.values(S.allPrices.reduce((m,p)=>{if(!m[p.group.id]||p.minimumQuantity<m[p.group.id].minimumQuantity)m[p.group.id]=p;return m},{}));$('#prices').innerHTML='<table><tr><th>Tickettyp (group.name)</th><th>Preis</th><th>group.id → PriceGroupId</th><th>Min/Max</th><th>Hinweis</th><th>Anzahl</th></tr>'+S.prices.map((p,i)=>`<tr><td>${esc(p.group.name)}</td><td>${p.amount}</td><td><small>${p.group.id}</small></td><td>${p.minSaleQuantity||0} / ${p.maxSaleQuantity||'∞'}</td><td>${[p.askNames&&'Namen',p.hasAllowedSubscriptions&&'Mitgliedschaft nötig',p.mandatoryBuyMinQtyWeb&&'Mindestmenge Pflicht'].filter(Boolean).join(', ')}</td><td><input class="s" style="width:50px" type="number" min="0"${p.maxSaleQuantity?` max="${p.maxSaleQuantity}"`:''} id="pq${i}" value="${i==0?Math.max(1,p.minSaleQuantity||0):0}"></td></tr>`).join('')+'</table>'}
 async function lockItems(){if(!$('#perSel').value)return alert('Erst Zeitfenster wählen');
   const entries=S.prices.map((p,i)=>({$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:p.group.id,ParticipantCount:Number($('#pq'+i).value)})).filter(e=>e.ParticipantCount>0);
   if(!entries.length)return alert('Mindestens ein Ticket wählen (Schritt 4)');
+  {const bad=[];entries.forEach(e=>{const p=S.prices.find(x=>x.group.id==e.PriceGroupId);if(!Number.isInteger(e.ParticipantCount)||e.ParticipantCount<0)bad.push(p.group.name+': ungültige Anzahl');if(p.maxSaleQuantity&&e.ParticipantCount>p.maxSaleQuantity)bad.push(`${p.group.name}: max ${p.maxSaleQuantity} (maxSaleQuantity)`);if(p.minSaleQuantity&&e.ParticipantCount<p.minSaleQuantity)bad.push(`${p.group.name}: min ${p.minSaleQuantity} (minSaleQuantity)`)});
+   const ex=(S.expos||[]).find(x=>x.id==$('#expoSel').value),tot=entries.reduce((a,e)=>a+e.ParticipantCount,0),per=(S.periods||[]).find(x=>x.id==$('#perSel').value);
+   if(ex&&ex.maxTicketsPerWebSale>0&&tot>ex.maxTicketsPerWebSale)bad.push(`max ${ex.maxTicketsPerWebSale} Tickets je Verkauf (maxTicketsPerWebSale)`);
+   if(per&&per.occupancy){const o=per.occupancy;if(o.controlType==1&&o.maxVisitorsPerGroup>0&&tot>o.maxVisitorsPerGroup)bad.push(`max ${o.maxVisitorsPerGroup} Personen je Gruppe`);if(o.controlType!=1&&tot>o.remaining)bad.push(`nur noch ${o.remaining} Plätze frei`)}
+   if(bad.length)return alert('Vorab-Prüfung (Felder aus FindExpositions/Prices/Periods):\n'+bad.join('\n'))}
   const r=await call('General','LockBasketItems',{BasketItems:[{$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:$('#expoSel').value,ExpositionPeriodId:$('#perSel').value,Quantity:1,Entries:entries,CustomerId:cust()}]},'#out-lk');
   const lr=r&&r.lockBasketResult;if(lr&&lr.isLocked){S.items=S.items.concat(lr.basketItems);S.basket=null;renderCart();$('#out-lk').insertAdjacentHTML('afterbegin','<p class="ok">✔ isLocked = true – Positionen inkl. lockTicket zum Warenkorb hinzugefügt. Weiter im Tab „Artikelkauf“ ab Schritt 2.</p>')}
   else if(lr)$('#out-lk').insertAdjacentHTML('afterbegin',`<p class="bad">✘ nicht gelockt: ${esc((lr.validationResult&&lr.validationResult.message)||'')}</p>`)}
@@ -413,7 +422,7 @@ async function unlockItems(){if(!S.items.length)return alert('Warenkorb leer');c
 // ---------- Coupons ----------
 const cust=()=>S.customerId||EMPTY;const custOrNull=()=>S.customerId||null;
 function setCustomer(id,name){S.customerId=id;S.customerName=name;$('#custId').value=id||EMPTY;
-  S.items.forEach(x=>{if('CustomerID'in x)x.CustomerID=cust()});
+  S.items.forEach(x=>{['CustomerID','CustomerId','customerId','customerID'].forEach(k=>{if(k in x)x[k]=cust()})});
   $('#loginStatus').className=id?'ok':'bad';$('#loginStatus').textContent=id?`🟢 eingeloggt als ${name} – CustomerId ${id}`:'⚪ anonym – CustomerId = Empty-GUID'}
 async function login(){const r=await call('General','AuthenticateUser',{Credentials:{Username:$('#lUser').value,Password:$('#lPw').value}},'#out-login');
   const a=r&&r.result;if(a&&a.hasSucceeded){S.person=a.person;setCustomer(a.personId,a.person&&a.person.name?`${a.person.name.first} ${a.person.name.last}`:$('#lUser').value);$('#out-login').insertAdjacentHTML('afterbegin','<p class="ok">✔ Login ok. Warenkorb bitte neu berechnen (ReCalculateBasket) – Preise können sich ändern.</p>')}
@@ -444,7 +453,7 @@ async function rcAfterRelock(which){if(!S.rebookNew)return alert('Erst ReLock');
 async function rebookViaUnlock(){if(!S.items.length)return alert('Erst Lock');await call('General','UnlockBasketItems',{BasketItems:S.items},'#out-rl');S.items=[];
   const sel=$('#perSel');if($('#rbPer').value){sel.innerHTML+=`<option value="${$('#rbPer').value}">Ziel</option>`;sel.value=$('#rbPer').value}await lockItems();$('#out-rl').innerHTML='<p>Unlock ausgeführt, neuer Lock siehe Schritt 5.</p>'}
 async function findAbos(){const r=await call('Subscriptions','FindSubscriptionArticles',{Criteria:{Includes:{Prices:true},Paging:{PageIndex:0,PageSize:50}}},'#out-abo');
-  S.abos=(r&&r.subscriptionArticles)||[];$('#abos').innerHTML='<table><tr><th>Abo/Karte</th><th>Preis</th><th>Eintritte</th><th></th></tr>'+S.abos.map((a,i)=>`<tr><td>${esc(a.name)}</td><td>${a.price}</td><td>${a.numberOfTurns??''}</td><td><button class="go" onclick="addAbo(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
+  S.abos=(r&&r.subscriptionArticles)||[];$('#abos').innerHTML='<table><tr><th>Abo/Karte</th><th>Preis</th><th>Eintritte</th><th>Hinweise</th><th></th></tr>'+S.abos.map((a,i)=>`<tr><td>${esc(a.name)}</td><td>${a.price}</td><td>${a.numberOfTurns??''}</td><td><small>${[a.isEticket?'E-Ticket':'kein E-Ticket',a.familyItem&&'Familie',a.maxPersons>0&&'max '+a.maxPersons+' Pers.',a.personsMinimumAge>0&&'ab '+a.personsMinimumAge+' J.',a.maximumSalesQuantity>0&&'max '+a.maximumSalesQuantity+'/Verkauf',a.periodDuration&&('Laufzeit '+[a.periodDuration.months&&a.periodDuration.months+' M',a.periodDuration.weeks&&a.periodDuration.weeks+' W',a.periodDuration.days&&a.periodDuration.days+' T'].filter(Boolean).join(' ')),(a.blocked||a.unAvailable)&&'gesperrt'].filter(Boolean).join(', ')}</small></td><td><button class="go" onclick="addAbo(${i})">+ in Warenkorb</button></td></tr>`).join('')+'</table>'}
 function addAbo(i){const a=S.abos[i];S._names=S._names||{};S._names[a.id]=a.name;S.items.push({$type:T('ArticleSale'),Id:guid(),Article:{Id:a.id},Quantity:1,CustomerID:cust()});renderCart();alert('Im Warenkorb – weiter im Tab Artikelkauf, Schritt 2 (ReCalculateBasket)')}
 async function gvLoad(){const r=await call('Articles','FindArticles',{SearchCriteria:{Includes:{Price:true},Paging:{PageIndex:0,PageSize:100}}},'#out-gv0');
   const all=(r&&r.articles)||[];const l=all.filter(cpOk);
@@ -466,11 +475,11 @@ function tick(){document.querySelectorAll('.cd').forEach(e=>{const ms=new Date(e
 setInterval(tick,1000);
 async function extendLocks(byTime){const t=S.items.map(x=>x.lockTicket||x.LockTicket).filter(Boolean);if(!t.length)return alert('Keine LockTickets');
   const r=byTime?await call('General','ExtendLockPeriodByTime',{Seconds:Number($('#extSec').value),LockTickets:t},'#out-ext'):await call('General','ExtendLockPeriod',{LockTickets:t},'#out-ext');
-  const ok=(r&&r.extendedLocks&&r.extendedLocks.succeeded)||[];ok.forEach(n=>S.items.forEach(x=>{const lt=x.lockTicket||x.LockTicket;if(lt&&lt.id==n.id){lt.expirationTime=n.expirationTime}}));renderCart()}
+  const ok=(r&&r.extendedLocks&&r.extendedLocks.succeeded)||[];ok.forEach(n=>S.items.forEach(x=>{const lt=x.lockTicket||x.LockTicket;if(lt&&lt.id==n.id){Object.assign(lt,n)}}));renderCart()}
 async function removeItem(i){const x=S.items[i];if(!x)return;if(x.lockTicket||x.LockTicket){const r=await call('General','UnlockBasketItems',{BasketItems:[x]},'#out-qty');if(!(r&&r.unlockBasketItemsResult&&r.unlockBasketItemsResult.isValid))return alert('Unlock fehlgeschlagen')}
   S.items.splice(i,1);S.basket=null;renderCart();if(S.items.length)await recalc('#out-qty')}
 async function changeQty(i){const x=S.items[i];if(!x)return;
-  if(!(x.lockTicket||x.LockTicket)){const q=prompt('Neue Menge (ganze Zahl ≥ 1; 0 = entfernen)',x.Quantity??x.quantity);if(q===null||q.trim()==='')return;const n=Number(q);if(!Number.isInteger(n)||n<0)return alert('Ungültige Menge: '+q);if(n===0)return removeItem(i);if('Quantity'in x)x.Quantity=n;else x.quantity=n;renderCart();return recalc('#out-qty')}
+  if(!(x.lockTicket||x.LockTicket)){const q=prompt('Neue Menge (ganze Zahl ≥ 1; 0 = entfernen)',x.Quantity??x.quantity);if(q===null||q.trim()==='')return;const n=Number(q);if(!Number.isInteger(n)||n<0)return alert('Ungültige Menge: '+q);if(n===0)return removeItem(i);{const m=maxQ((x.Article||x.article||{}).Id||(x.Article||x.article||{}).id);if(m&&n>m)return alert(`Maximal ${m} pro Verkauf (maximumSalesQuantity)`)}if('Quantity'in x)x.Quantity=n;else x.quantity=n;renderCart();return recalc('#out-qty')}
   const en=x.entries||x.Entries;const q=prompt('Neue Teilnehmerzahl je Ticketart (kommagetrennt, Reihenfolge wie Entries)',en.map(e=>e.participantCount??e.ParticipantCount).join(','));if(!q)return;const qs=q.split(',').map(v=>Number(v.trim()));if(qs.some(n=>!Number.isInteger(n)||n<0))return alert('Ungültige Anzahl: '+q);if(qs.every(n=>n===0))return removeItem(i);
   const u=await call('General','UnlockBasketItems',{BasketItems:[x]},'#out-qty');if(!(u&&u.unlockBasketItemsResult&&u.unlockBasketItemsResult.isValid))return alert('Unlock fehlgeschlagen');
   const n={$type:T('ExpositionPeriodReservation'),Id:guid(),ExpositionId:x.expositionId,ExpositionPeriodId:x.expositionPeriodId,Quantity:1,CustomerId:cust(),Entries:en.map((e,k)=>({$type:T('ExpositionPeriodReservationEntry'),PriceGroupId:e.priceGroupId||e.PriceGroupId,ParticipantCount:qs[k]||0})).filter(e=>e.ParticipantCount>0)};
@@ -507,7 +516,7 @@ function exportReq(id,kind){const e=S._exp[id];const b=JSON.parse(JSON.stringify
   const w=document.createElement('div');w.innerHTML=`<div class="warn">Export (${kind}) – Passwort als Platzhalter <code>{{PASSWORD}}</code> (Postman: Collection-Variable PASSWORD setzen).</div><textarea style="width:100%;height:160px;font:11px monospace"></textarea>`;w.querySelector('textarea').value=txt;
   const host=[...document.querySelectorAll('button')].find(x=>x.getAttribute('onclick')==`exportReq('${id}','${kind}')`);host.closest('.io').parentElement.appendChild(w);
   if(navigator.clipboard)navigator.clipboard.writeText(txt).catch(()=>{})}
-const FLOW=[['FindArticles / Expositions / Abos',40,20,'t-art','#cfe8d4'],['Login: AuthenticateUser',40,100,'t-cust','#ddd'],['LockBasketItems (Kapazität)',40,180,'t-expo','#d4e4f7'],['ExtendLockPeriod(ByTime)',40,260,'t-pro','#ddd'],['Kunde: SavePerson / Kundenpreise',40,340,'t-price','#ddd'],
+const FLOW=[['FindArticles / Expositions / Abos',40,20,'t-art','#cfe8d4'],['Login: AuthenticateUser (hier Pflicht)',40,100,'t-cust','#cfe8d4'],['LockBasketItems (Kapazität)',40,180,'t-expo','#d4e4f7'],['ExtendLockPeriod(ByTime)',40,260,'t-pro','#ddd'],['Kunde: SavePerson / Kundenpreise',40,340,'t-price','#ddd'],
  ['ReCalculateBasket',370,20,'t-art','#cfe8d4'],['ListPaymentMethods',370,100,'t-art','#cfe8d4'],['ValidateBasket',370,180,'t-art','#cfe8d4'],['Teilzahlung: payments[]',370,260,'t-pro','#ddd'],['PSP-Zahlung (extern)',370,340,'t-err','#fff4e5'],
  ['CheckoutBasket',700,20,'t-art','#cfe8d4'],['E-Ticket-URL (PDF)',700,100,'t-art','#cfe8d4'],['FindETickets / Historie',700,180,'t-acc','#ddd'],['CreditSale (Storno)',700,260,'t-storno','#ddd'],['Fehler → Recovery',700,340,'t-err','#fff4e5']];
 const EDGES=[[0,1],[1,2],[2,3],[0,5],[2,5],[4,5],[5,6],[6,7],[7,8],[8,9],[7,9],[9,10],[10,11],[11,12],[10,13],[9,14],[14,2]];
