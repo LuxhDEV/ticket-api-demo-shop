@@ -417,7 +417,8 @@ async function checkout(){const b=withPayment();if(!b)return;
   {const its=b.items||b.Items||[],lts=its.map(x=>x.lockTicket||x.LockTicket).filter(Boolean);
    if(lts.length){$('#out-coext').innerHTML='';const er=await call('General','ExtendLockPeriodByTime',{Seconds:3600,LockTickets:lts},'#out-coext');
     const ok=(er&&er.extendedLocks&&er.extendedLocks.succeeded)||[],fl=(er&&er.extendedLocks&&er.extendedLocks.failed)||[];
-    if(!er||er.succes===false||fl.length||ok.length<lts.length){$('#out-coext').insertAdjacentHTML('afterbegin',`<p class="bad">✘ Checkout abgebrochen: ${!er||er.succes===false?'ExtendLockPeriodByTime fehlgeschlagen':fl.length+' von '+lts.length+' LockTicket(s) nicht verlängert'} – Reservierung nicht mehr gesichert. Positionen neu locken, ReCalculate/Validate wiederholen.</p>`);return}
+    const miss=lts.filter(t=>!ok.some(o=>o&&o.id==t.id));
+    if(!er||er.succes===false||!er.extendedLocks||fl.length||miss.length){$('#out-coext').insertAdjacentHTML('afterbegin',`<p class="bad">✘ Checkout abgebrochen: ${!er||er.succes===false||!er.extendedLocks?'ExtendLockPeriodByTime fehlgeschlagen bzw. ohne gültige Antwort':miss.length+' von '+lts.length+' LockTicket(s) nicht verlängert'} – Reservierung nicht mehr gesichert. Positionen neu locken, ReCalculate/Validate wiederholen.</p>`);return}
     const upd=arr=>arr.forEach(x=>{const lt=x.lockTicket||x.LockTicket;const n=lt&&ok.find(o=>o.id==lt.id);if(n)Object.assign(lt,n)});upd(its);upd(S.items);if(S.basket)upd(S.basket.items||[]);renderCart();
     $('#out-coext').insertAdjacentHTML('afterbegin',`<p class="ok">✔ ${ok.length} LockTicket(s) per ExtendLockPeriodByTime (3600 s ab Lock-Erstellung) verlängert, neue Tickets übernommen – weiter mit CheckoutBasket.</p>`)}
    else $('#out-coext').innerHTML='<p><small>Keine gelockten Positionen – ExtendLockPeriodByTime nicht nötig.</small></p>'}
