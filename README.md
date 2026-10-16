@@ -49,3 +49,6 @@ Welcher Endpunkt von `WebShopDocumentService.svc` passt, ergibt sich aus `salesI
 
 ## Retest (16.10.2026, 19:40)
 Behoben: Kundenwechsel (Login, Logout, Gast) verwirft den berechneten Warenkorb. Technische Fehler (`succes:false`, HTTP ≠ 200) erscheinen als roter Hinweis. ExtendLockPeriod meldet `failed[]` und weist darauf hin, dass „succeeded“ auch bei freigegebenen Locks kommt. Gastkauf prüft die Gast-Kunden-ID vor Validate.
+
+## Retest 2 (16.10.2026, 19:50)
+Behoben: 30-s-Timeout für alle Calls (vorher blieb der Doppelklick-Schutz bei hängendem Request für immer gesperrt), roter Hinweis bei Netzwerkfehler/Timeout, Prüfung abgelaufener LockTickets vor Validate/Checkout, Dokument-Links für OrganisedVisitRebooking, ChildCare, DigitalWalletCharge und WaitingList, kein „undefined“ mehr in ReservationProof-URLs bei fehlender ID.

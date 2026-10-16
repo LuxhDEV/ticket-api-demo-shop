@@ -368,11 +368,12 @@ async function call(mod,meth,body,out){
   const shown=JSON.parse(JSON.stringify(req));shown.Context.Password='••••••';
   const xid='x'+Math.random().toString(36).slice(2);S._exp=S._exp||{};S._exp[xid]={url,body:shown};const el=$(out);el.innerHTML=`<div class="io"><div><h4>Request <button class="go" style="padding:2px 8px;font-size:11px;background:#555" onclick="exportReq('${xid}','curl')">als curl</button><button class="go" style="padding:2px 8px;font-size:11px;background:#555" onclick="exportReq('${xid}','postman')">als Postman</button></h4><div class="url">POST ${esc(url)}</div><div class="url">Content-Type: application/json</div><pre>${esc(JSON.stringify(shown,null,2))}</pre></div><div><h4>Response</h4><pre>… lädt</pre></div></div>`;
   const pre=el.querySelectorAll('pre')[1];const t0=performance.now();
-  try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),30000);
+  try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req),signal:ac.signal});clearTimeout(tm);
     const txt=await r.text();let j;try{j=JSON.parse(txt)}catch{j={raw:txt}}
     pre.textContent=`// HTTP ${r.status} – ${Math.round(performance.now()-t0)} ms\n`+JSON.stringify(j,null,2);
     if(j&&(j.succes===false||j.success===false&&j.message||!r.ok))el.insertAdjacentHTML('afterbegin',`<p class="bad">✘ Technischer Fehler (HTTP ${r.status}): ${esc(j.message||j.raw||'')}</p>`);return j;
-  }catch(e){pre.textContent='Fehler: '+e+'\n(CORS/Netzwerk? Siehe README)';return null}}
+  }catch(e){clearTimeout(tm);const to=e&&e.name=='AbortError';pre.textContent=(to?'Timeout nach 30 s – keine Antwort vom Server':'Fehler: '+e)+'\n(CORS/Netzwerk? Siehe README)';el.insertAdjacentHTML('afterbegin',`<p class="bad">✘ ${to?'Timeout (30 s)':'Netzwerkfehler'} – nichts gebucht, bitte erneut versuchen.</p>`);return null}}
 // ---------- Artikel ----------
 const cpOk=a=>!!(a&&(a.allowPriceChangeWebshop??a.AllowPriceChangeWebshop));
 const B=(t,c)=>` <span class="cp"${c?` style="background:${c}"`:''}>${t}</span>`;
@@ -396,6 +397,7 @@ async function recalc(out,withCoupons){if(!S.items.length){alert('Warenkorb ist 
 async function listPM(){const r=await call('General','ListPaymentMethods',{},'#out-pm');if(!r)return;
   $('#pmSel').innerHTML=(r.paymentMethods||[]).map(p=>`<option value="${p.id}">${esc(p.name)} (${esc(p.code||'')})</option>`).join('');const inv=(r.paymentMethods||[]).find(p=>p.invoicePaymentMethod);if(inv)$('#pmSel').value=inv.id;S.paymentMethodId=$('#pmSel').value}
 function withPayment(){if(!S.basket){alert('Erst ReCalculateBasket ausführen');return null}
+  {const now=Date.now(),ex=S.items.map(x=>x.lockTicket||x.LockTicket).filter(t=>t&&t.expirationTime&&Date.parse(t.expirationTime)<now);if(ex.length){alert(`${ex.length} LockTicket(s) abgelaufen – erst ExtendLockPeriod (Warenkorb-Profi) oder Positionen neu locken.`);return null}}
   if(isGuest()&&!GUIDRE.test($('#guestId').value.trim())){alert('Gastkauf: Gast-Kunden-ID (Web-Systemkunde) fehlt oder ist ungültig');return null}
   if(isGuest()){const bad=S.items.filter(x=>{const t=(x.$type||'');if(/ActivityReservation/.test(t))return true;const id=(x.Article||x.article||{}).Id||(x.Article||x.article||{}).id;return guestBlocked((S.articles||[]).find(a=>a.id==id))||guestBlocked((S.abos||[]).find(a=>a.id==id))});if(bad.length){alert('Diese Positionen gehen nur mit Kundenkonto (Abo, Wallet, Aktivität):\n'+bad.map(itemLabel).join('\n').replace(/<[^>]+>/g,'')+'\nBitte einloggen/registrieren oder entfernen.');return null}
    if(!$('#gName').value.trim()||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('#gMail').value.trim())){alert('Gastkauf: Name und gültige E-Mail eintragen');return null}}
@@ -420,17 +422,20 @@ function docsFor(res){const base=$('#docBase').value.replace(/\/$/,'')+'/WebShop
    else if(t=='CultureEventReservationSalesItem')a('Tickets',u('CultureEvents',x.cultureEventReservationId),'cultureEventReservationId');
    else if(t=='FitnessActivityDayReservationSalesItem')a('Fitness-Ticket',u('Fitness',x.fitnessActivityDayReservationId),'fitnessActivityDayReservationId');
    else if(t=='RentalReservationSalesItem')a('Verleih',u('Rental',x.rentalReservationId),'rentalReservationId');
-   else if(t=='PlaceReservationSalesItem')a('Reservierungsnachweis',u('ReservationProof',`${x.id}/${x.reservationId}/${EMPTY}`),'id + reservationId');
-   else if(t=='RecurringPlaceReservationSalesItem')a('Serien-Nachweis',u('ReservationProof',`${x.id}/${EMPTY}/${x.serieId}`),'id + serieId');
+   else if(t=='PlaceReservationSalesItem')a('Reservierungsnachweis',u('ReservationProof',`${x.id}/${x.reservationId||EMPTY}/${EMPTY}`),'id + reservationId');
+   else if(t=='RecurringPlaceReservationSalesItem')a('Serien-Nachweis',u('ReservationProof',`${x.id}/${EMPTY}/${x.serieId||EMPTY}`),'id + serieId');
+   else if(t=='OrganisedVisitRebookingSalesItem')a('E-Ticket Umbuchung',u('ETicketByOrganisedVisitRebooking',`${x.id}/${x.organisedVisitId||EMPTY}`,1),'id + organisedVisitId');
+   else if(t=='ChildCareCentreEntryReservationSalesItem')a('Kinderbetreuung',u('Childcare',x.childCareCentreEntryId||x.id),'childCareCentreEntryId');
+   else if(t=='DigitalWalletChargeSalesItem'||t=='WaitingListSalesItem')out.push({pos:n,typ:t,feld:'–',lab:t=='WaitingListSalesItem'?'kein Dokument (nur Warteliste)':'kein eigenes Dokument (Beleg über DigitalReceipt)',url:''});
    else if(t=='SubscriptionProlongationSalesItem'){a('Abo-Dokument',u('Subscriptions',x.subscriptionId),'subscriptionId');a('E-Ticket',u('ETicketBySubscription',x.subscriptionId,1),'subscriptionId')}
-   else if(t=='FileSalesItem')a('Dossier',u('Files',x.fileActivityId),'fileActivityId');
+   else if(t=='FileSalesItem')a('Dossier',u('Files',x.fileActivityId||x.id),'fileActivityId');
    else a('E-Ticket (Fallback)',u('ETickets',x.id,1),'id')});
   if(res.salesSeriesId)out.push({pos:'Verkauf',typ:'Checkout-Ergebnis',feld:'salesSeriesId',lab:'Kassenbeleg',url:`${base}DigitalReceipt/${S_}/${res.salesSeriesId}/`});
   if(res.invoiceId)out.push({pos:'Verkauf',typ:'Checkout-Ergebnis',feld:'invoiceId',lab:'Rechnung',url:u('Invoice',res.invoiceId)});
   return out}
 function docsFromCheckout(){let res=S.lastRes;const t=$('#coJson').value.trim();if(t){try{const j=JSON.parse(t);res=j.result||j.response&&(j.response.result||j.response)||j}catch(e){return alert('Ungültiges JSON: '+e.message)}}
   if(!res||!(res.salesItems||[]).length)return alert('Keine salesItems – erst Checkout ausführen oder Response einfügen');
-  const d=docsFor(res);$('#out-et').innerHTML='<table><tr><th>Position</th><th>$type</th><th>Feld</th><th>Dokument</th></tr>'+d.map(x=>`<tr><td>${esc(x.pos)}</td><td><small>${esc(x.typ)}</small></td><td><code>${esc(x.feld)}</code></td><td><a class="url" href="${x.url}" target="_blank">${esc(x.lab)}</a><br/><small>${esc(x.url)}</small></td></tr>`).join('')+'</table><p><small>0 Byte = keine Druckvorlage im Backoffice für diesen Typ.</small></p>'}
+  const d=docsFor(res);$('#out-et').innerHTML='<table><tr><th>Position</th><th>$type</th><th>Feld</th><th>Dokument</th></tr>'+d.map(x=>`<tr><td>${esc(x.pos)}</td><td><small>${esc(x.typ)}</small></td><td><code>${esc(x.feld)}</code></td><td>${x.url?`<a class="url" href="${x.url}" target="_blank">${esc(x.lab)}</a><br/><small>${esc(x.url)}</small>`:esc(x.lab)}</td></tr>`).join('')+'</table><p><small>0 Byte = keine Druckvorlage im Backoffice für diesen Typ.</small></p>'}
 function eticket(){const id=$('#salesItemId').value.trim();if(!id){alert('SalesItemId fehlt (aus CheckoutBasket)');return}
   const u=`${$('#docBase').value.replace(/\/$/,'')}/WebShopDocumentService.svc/ETickets/${ctx().ShopId}/${ctx().Language}/${id}/`;
   const uu=u;$('#out-et').innerHTML=`<p>GET <a class="url" href="${uu}" target="_blank">${esc(uu)}</a> · <a href="${uu}" download="eticket-${id}.pdf">⬇ Download</a></p><p><small>Liefert das PDF direkt (Content-Type application/pdf). Real: Ausstellungs-Ticket → PDF 154 KB; Artikel ohne Barcode/Vorlage → leere Antwort.</small></p><iframe src="${uu}" style="width:100%;height:500px;border:1px solid #ccc"></iframe>`}
