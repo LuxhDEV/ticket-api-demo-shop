@@ -370,7 +370,8 @@ async function call(mod,meth,body,out){
   const pre=el.querySelectorAll('pre')[1];const t0=performance.now();
   try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
     const txt=await r.text();let j;try{j=JSON.parse(txt)}catch{j={raw:txt}}
-    pre.textContent=`// HTTP ${r.status} – ${Math.round(performance.now()-t0)} ms\n`+JSON.stringify(j,null,2);return j;
+    pre.textContent=`// HTTP ${r.status} – ${Math.round(performance.now()-t0)} ms\n`+JSON.stringify(j,null,2);
+    if(j&&(j.succes===false||j.success===false&&j.message||!r.ok))el.insertAdjacentHTML('afterbegin',`<p class="bad">✘ Technischer Fehler (HTTP ${r.status}): ${esc(j.message||j.raw||'')}</p>`);return j;
   }catch(e){pre.textContent='Fehler: '+e+'\n(CORS/Netzwerk? Siehe README)';return null}}
 // ---------- Artikel ----------
 const cpOk=a=>!!(a&&(a.allowPriceChangeWebshop??a.AllowPriceChangeWebshop));
@@ -395,6 +396,7 @@ async function recalc(out,withCoupons){if(!S.items.length){alert('Warenkorb ist 
 async function listPM(){const r=await call('General','ListPaymentMethods',{},'#out-pm');if(!r)return;
   $('#pmSel').innerHTML=(r.paymentMethods||[]).map(p=>`<option value="${p.id}">${esc(p.name)} (${esc(p.code||'')})</option>`).join('');const inv=(r.paymentMethods||[]).find(p=>p.invoicePaymentMethod);if(inv)$('#pmSel').value=inv.id;S.paymentMethodId=$('#pmSel').value}
 function withPayment(){if(!S.basket){alert('Erst ReCalculateBasket ausführen');return null}
+  if(isGuest()&&!GUIDRE.test($('#guestId').value.trim())){alert('Gastkauf: Gast-Kunden-ID (Web-Systemkunde) fehlt oder ist ungültig');return null}
   if(isGuest()){const bad=S.items.filter(x=>{const t=(x.$type||'');if(/ActivityReservation/.test(t))return true;const id=(x.Article||x.article||{}).Id||(x.Article||x.article||{}).id;return guestBlocked((S.articles||[]).find(a=>a.id==id))||guestBlocked((S.abos||[]).find(a=>a.id==id))});if(bad.length){alert('Diese Positionen gehen nur mit Kundenkonto (Abo, Wallet, Aktivität):\n'+bad.map(itemLabel).join('\n').replace(/<[^>]+>/g,'')+'\nBitte einloggen/registrieren oder entfernen.');return null}
    if(!$('#gName').value.trim()||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('#gMail').value.trim())){alert('Gastkauf: Name und gültige E-Mail eintragen');return null}}
   if(!S.paymentMethodId){alert('Erst ListPaymentMethods ausführen');return null}
@@ -471,7 +473,7 @@ const isGuest=()=>!S.customerId&&$('#guestMode')&&$('#guestMode').checked;
 const cust=()=>S.customerId||(isGuest()&&$('#guestId').value.trim())||EMPTY;
 const guestBlocked=x=>!!(x&&(x.isSubscriptionItem||x.isDigitalWalletItem||x.numberOfTurns!==undefined));
 function guestToggle(){$('#guestForm').style.display=$('#guestMode').checked?'':'none';if(isGuest()&&!GUIDRE.test($('#guestId').value.trim()))alert('Bitte oben eine gültige Gast-Kunden-ID eintragen (ID des Web-Systemkunden).');S.items.forEach(x=>{['CustomerID','CustomerId','customerId','customerID'].forEach(k=>{if(k in x)x[k]=cust()})});$('#guestState').textContent=isGuest()?'CustomerId = '+cust():'';S.basket=null;if(S.articles&&$('#arts'))findArticlesRender&&findArticlesRender()}const custOrNull=()=>S.customerId||null;
-function setCustomer(id,name){S.customerId=id;S.customerName=name;$('#custId').value=id||EMPTY;
+function setCustomer(id,name){const ch=(S.customerId||null)!==(id||null);S.customerId=id;S.customerName=name;if(ch&&S.basket){S.basket=null;setTimeout(()=>{const o=$('#out-login');o&&o.insertAdjacentHTML('beforeend','<p class="bad">Kunde gewechselt – berechneter Warenkorb verworfen, bitte ReCalculateBasket erneut ausführen.</p>')},0)}if($('#guestState'))$('#guestState').textContent=isGuest()?'CustomerId = '+cust():'';$('#custId').value=id||EMPTY;
   S.items.forEach(x=>{['CustomerID','CustomerId','customerId','customerID'].forEach(k=>{if(k in x)x[k]=cust()})});
   $('#loginStatus').className=id?'ok':'bad';$('#loginStatus').textContent=id?`🟢 eingeloggt als ${name} – CustomerId ${id}`:'⚪ anonym – CustomerId = Empty-GUID'}
 async function login(){const r=await call('General','AuthenticateUser',{Credentials:{Username:$('#lUser').value,Password:$('#lPw').value}},'#out-login');
@@ -525,7 +527,8 @@ function tick(){document.querySelectorAll('.cd').forEach(e=>{const ms=new Date(e
 setInterval(tick,1000);
 async function extendLocks(byTime){const t=S.items.map(x=>x.lockTicket||x.LockTicket).filter(Boolean);if(!t.length)return alert('Keine LockTickets');
   const r=byTime?await call('General','ExtendLockPeriodByTime',{Seconds:Number($('#extSec').value),LockTickets:t},'#out-ext'):await call('General','ExtendLockPeriod',{LockTickets:t},'#out-ext');
-  const ok=(r&&r.extendedLocks&&r.extendedLocks.succeeded)||[];ok.forEach(n=>S.items.forEach(x=>{const lt=x.lockTicket||x.LockTicket;if(lt&&lt.id==n.id){Object.assign(lt,n)}}));renderCart()}
+  const ok=(r&&r.extendedLocks&&r.extendedLocks.succeeded)||[];ok.forEach(n=>S.items.forEach(x=>{const lt=x.lockTicket||x.LockTicket;if(lt&&lt.id==n.id){Object.assign(lt,n)}}));renderCart();
+  const fl=(r&&r.extendedLocks&&r.extendedLocks.failed)||[];if(r)$('#out-ext').insertAdjacentHTML('afterbegin',fl.length?`<p class="bad">✘ ${fl.length} LockTicket(s) nicht verlängert – Positionen neu locken.</p>`:`<p class="ok">✔ ${ok.length} verlängert, neue LockTickets übernommen.</p><p><small>Hinweis (real): ExtendLockPeriod meldet auch für bereits freigegebene Locks „succeeded“ – das beweist nicht, dass die Kapazität noch reserviert ist.</small></p>`)}
 async function removeItem(i){const x=S.items[i];if(!x)return;if(x.lockTicket||x.LockTicket){const r=await call('General','UnlockBasketItems',{BasketItems:[x]},'#out-qty');if(!(r&&r.unlockBasketItemsResult&&r.unlockBasketItemsResult.isValid))return alert('Unlock fehlgeschlagen')}
   S.items.splice(i,1);S.basket=null;renderCart();if(S.items.length)await recalc('#out-qty')}
 async function changeQty(i){const x=S.items[i];if(!x)return;

@@ -46,3 +46,6 @@ Welcher Endpunkt von `WebShopDocumentService.svc` passt, ergibt sich aus `salesI
 - Ergebnis des Checkouts: `DigitalReceipt/{ShopId}/{salesSeriesId}/` (Kassenbeleg) und `Invoice/…/{invoiceId}`
 - Real als PDF bestätigt: ETickets (Ausstellung, 10er Karte), ETicketByOrganisedVisit, OrganisedVisits (Vorlage ohne Daten), Coupons (Gutschein (Druck)), DigitalReceipt. 0 Byte (keine Vorlage): GiftCertificates, DirectDebit.
 - Slash am Ende nur bei ETickets, ETicketBy… und DigitalReceipt (sonst 307). Bei den übrigen führt der Slash zu 404.
+
+## Retest (16.10.2026, 19:40)
+Behoben: Kundenwechsel (Login, Logout, Gast) verwirft den berechneten Warenkorb. Technische Fehler (`succes:false`, HTTP ≠ 200) erscheinen als roter Hinweis. ExtendLockPeriod meldet `failed[]` und weist darauf hin, dass „succeeded“ auch bei freigegebenen Locks kommt. Gastkauf prüft die Gast-Kunden-ID vor Validate.
